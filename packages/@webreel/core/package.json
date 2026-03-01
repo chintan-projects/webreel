@@ -1,6 +1,6 @@
 {
   "name": "@webreel/core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Core recording engine for webreel - headless Chrome capture, cursor animation, and video compositing.",
   "repository": {
     "type": "git",
