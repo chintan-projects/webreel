@@ -23,7 +23,8 @@
     "node": ">=18"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/prompts"
   ],
   "scripts": {
     "clean": "rm -rf dist",
@@ -33,7 +34,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.2",
+    "@anthropic-ai/sdk": "^0.52.0",
+    "openai": "^4.80.0"
   },
   "devDependencies": {
     "@types/node": "25.3.0",

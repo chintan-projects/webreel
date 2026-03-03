@@ -215,3 +215,138 @@ export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
   temperature: 0.7,
   maxTokens: 4096,
 };
+
+// ─── Provider Configuration ───────────────────────────────────────────
+
+/**
+ * Configuration for an OpenAI-compatible provider instance.
+ * Passed to the OpenAICompatibleProvider constructor.
+ */
+export interface ProviderConfig {
+  /** Human-readable provider name (e.g., "openai", "openrouter"). */
+  readonly name: string;
+  /** Base URL for the API endpoint. */
+  readonly baseURL: string;
+  /** Environment variable name holding the API key (undefined for keyless local endpoints). */
+  readonly apiKeyEnvVar?: string;
+  /** Additional HTTP headers (e.g., X-Title for OpenRouter). */
+  readonly defaultHeaders?: Readonly<Record<string, string>>;
+}
+
+// ─── Authoring Types ──────────────────────────────────────────────────
+
+/**
+ * A brief describing the demo to be authored.
+ * Input to the brief-to-draft generation pipeline.
+ */
+export interface Brief {
+  /** Target audience description. */
+  readonly audience: string;
+  /** Product or feature being demoed. */
+  readonly product: string;
+  /** Key messages to convey. */
+  readonly keyMessages: readonly string[];
+  /** Target duration (e.g., "4 minutes", "90s"). */
+  readonly duration: string;
+  /** Desired tone (e.g., "technical", "marketing", "casual"). */
+  readonly tone?: string;
+  /** Available assets or repos to reference. */
+  readonly assets?: string;
+}
+
+/** Result of the generate-and-validate pipeline. */
+export interface GenerateResult {
+  /** Parsed Demo Markdown script IR. */
+  readonly script: DemoScript;
+  /** Raw Markdown text produced by the LLM. */
+  readonly markdown: string;
+  /** Number of generation attempts (1 = first try succeeded). */
+  readonly attempts: number;
+}
+
+/** Result of a script refinement pass. */
+export interface RefinementResult {
+  /** Updated script IR. */
+  readonly script: DemoScript;
+  /** Updated raw Markdown. */
+  readonly markdown: string;
+  /** Unified diff of old vs new Markdown. */
+  readonly diff: string;
+  /** Number of generation attempts. */
+  readonly attempts: number;
+}
+
+/** Severity of a pacing issue. */
+export type PacingSeverity = "error" | "warning" | "info";
+
+/** A single pacing issue found during analysis. */
+export interface PacingIssue {
+  /** Issue severity. */
+  readonly severity: PacingSeverity;
+  /** Human-readable description of the issue. */
+  readonly message: string;
+  /** Scene name where the issue occurs. */
+  readonly sceneName?: string;
+  /** Act name where the issue occurs. */
+  readonly actName?: string;
+  /** Suggested fix. */
+  readonly suggestion?: string;
+}
+
+/** Result of pacing analysis. */
+export interface PacingReport {
+  /** All detected pacing issues. */
+  readonly issues: readonly PacingIssue[];
+  /** Whether the script passes pacing checks (no errors). */
+  readonly passed: boolean;
+  /** Per-scene estimated durations in seconds. */
+  readonly sceneDurations: Readonly<Record<string, number>>;
+  /** Total estimated duration in seconds. */
+  readonly totalDurationEstimate: number;
+}
+
+/** A suggestion from post-render review. */
+export interface ReviewSuggestion {
+  /** Scene this suggestion applies to. */
+  readonly sceneName: string;
+  /** What to improve. */
+  readonly message: string;
+  /** Suggested action (e.g., "add annotation", "reduce narration"). */
+  readonly action?: string;
+  /** Priority: higher = more impactful. */
+  readonly priority: "high" | "medium" | "low";
+}
+
+/** Result of post-render review. */
+export interface ReviewReport {
+  /** All review suggestions. */
+  readonly suggestions: readonly ReviewSuggestion[];
+  /** Overall quality assessment. */
+  readonly summary: string;
+  /** Per-scene notes. */
+  readonly sceneNotes: Readonly<Record<string, string>>;
+}
+
+/** Metadata about a rendered video, used for post-render review. */
+export interface RenderMetadata {
+  /** Per-scene render info. */
+  readonly scenes: readonly {
+    readonly sceneName: string;
+    readonly actName: string;
+    readonly durationMs: number;
+    readonly frameCount: number;
+    readonly actionCount: number;
+  }[];
+  /** Total video duration in milliseconds. */
+  readonly totalDurationMs: number;
+  /** Output file path. */
+  readonly outputPath: string;
+}
+
+/** Resolved provider information from auto-detection. */
+export interface ResolvedProvider {
+  /** Provider name (registered in the LLMProviderRegistry). */
+  readonly providerName: string;
+  /** Default model for this provider. */
+  readonly model: string;
+}

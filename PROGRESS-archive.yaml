@@ -72,6 +72,10 @@ completed_items:
   - id: "WR-22"
     name: "WS-2.8: webreel plan Command"
     completed: "2026-03-03"
+  # --- Phase 3: LLM Collaborative Authoring ---
+  - id: "WR-23"
+    name: "Phase 3: LLM Providers + Prompt System + Authoring Pipeline + Author CLI"
+    completed: "2026-03-03"
 
 sessions:
   - date: "2026-03-03"
@@ -110,3 +114,7 @@ sessions:
     id: "session-009"
     focus: "WS-2.1 through WS-2.8 — Complete Phase 2"
     outcome: "All 8 Phase 2 workstreams. 524 total tests."
+  - date: "2026-03-03"
+    id: "session-010"
+    focus: "Phase 3 — LLM Collaborative Authoring"
+    outcome: "LLM providers, prompt templates, authoring pipeline, author CLI. 701 tests."
