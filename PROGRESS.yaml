@@ -1,0 +1,34 @@
+# webreel — Active Progress
+# Stays LEAN. Only active/in-progress state here.
+# Completed items and session logs in PROGRESS-archive.yaml.
+# Read by SessionStart hook every session.
+
+current_phase: "phase-2-multi-surface-annotations"
+current_focus: "Phase 1 + Phase 2 COMPLETE — ready for Phase 3 (Authoring & Output)"
+
+active_work: []
+
+blockers: []
+
+pending_decisions:
+  - "Voice cloning ethics (PRD open question #1)"
+  - "Interactive HTML output — core feature or plugin? (PRD open question #5)"
+
+# Only the LAST 3 sessions. Older ones archived by /session-end.
+recent_sessions:
+  - date: "2026-03-03"
+    id: "session-007"
+    focus: "WS-1.3 through WS-1.8 — Complete Phase 1"
+    outcome: "Terminal surface, narration engine, title cards, browser surface, scene orchestrator, render CLI, example scripts. 307 tests."
+  - date: "2026-03-03"
+    id: "session-008"
+    focus: "WS-1.2 parser tests + Phase 1 verification"
+    outcome: "61 parser tests, parseMeta bug fix, Phase 1 fully verified."
+  - date: "2026-03-03"
+    id: "session-009"
+    focus: "WS-2.1 through WS-2.8 — Complete Phase 2"
+    outcome: "All 8 Phase 2 workstreams: 3 new surfaces, annotations, transitions, subtitles, caching, plan command. 524 total tests."
+
+completed_summary:
+  total_items: 22
+  total_sessions: 9

@@ -1,0 +1,42 @@
+{
+  "name": "@webreel/director",
+  "version": "0.0.1",
+  "description": "Demo Markdown parser, scene graph IR, and LLM-powered authoring for webreel.",
+  "homepage": "https://webreel.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vercel-labs/webreel.git",
+    "directory": "packages/@webreel/director"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "rm -rf dist && tsc",
+    "type-check": "tsc --noEmit",
+    "dev": "tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "25.3.0",
+    "typescript": "5.9.3"
+  }
+}

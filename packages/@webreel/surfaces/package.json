@@ -1,0 +1,49 @@
+{
+  "name": "@webreel/surfaces",
+  "version": "0.0.1",
+  "description": "Multi-surface abstraction for webreel — browser, terminal, application, desktop, and title card surfaces.",
+  "homepage": "https://webreel.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vercel-labs/webreel.git",
+    "directory": "packages/@webreel/surfaces"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "rm -rf dist && tsc",
+    "type-check": "tsc --noEmit",
+    "dev": "tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@webreel/core": "workspace:*",
+    "@xterm/addon-serialize": "^0.14.0",
+    "@xterm/headless": "^6.0.0",
+    "node-pty": "^1.1.0",
+    "sharp": "^0.34.5"
+  },
+  "optionalDependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "25.3.0",
+    "typescript": "5.9.3"
+  }
+}

@@ -33,3 +33,4 @@ export { InteractionTimeline, type TimelineData } from "./timeline.js";
 export { compose, type ComposeOptions } from "./compositor.js";
 export { ensureFfmpeg } from "./ffmpeg.js";
 export { extractThumbnail, type SfxConfig } from "./media.js";
+export { WebReelError } from "./errors.js";
