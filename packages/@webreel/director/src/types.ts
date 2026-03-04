@@ -25,6 +25,12 @@ export interface ScriptMeta {
     readonly width: number;
     readonly height: number;
   };
+  /** Narrator configuration for TTS provider, voice, and speed. */
+  readonly narrator?: {
+    readonly provider?: string;
+    readonly voice?: string;
+    readonly speed?: number;
+  };
   /** Visual theme for annotations and overlays. */
   readonly theme?: string;
   /** Output format preferences. */
@@ -252,6 +258,10 @@ export interface Brief {
   readonly tone?: string;
   /** Available assets or repos to reference. */
   readonly assets?: string;
+  /** Live product URL (if deployed). */
+  readonly productUrl?: string;
+  /** Product context extracted from README or docs (auto-populated). */
+  readonly productContext?: string;
 }
 
 /** Result of the generate-and-validate pipeline. */

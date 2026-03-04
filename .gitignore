@@ -4,6 +4,7 @@ dist
 .turbo
 .video
 .webreel
+output
 
 .DS_Store
 .env*

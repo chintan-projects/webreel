@@ -9,8 +9,8 @@
  * Delegates to @webreel/director's authoring pipeline for LLM calls.
  */
 
-import { resolve, basename } from "node:path";
-import { readFile, writeFile } from "node:fs/promises";
+import { resolve, basename, dirname, join } from "node:path";
+import { readFile, writeFile, mkdir, access, readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { Command } from "commander";
@@ -86,7 +86,7 @@ export function createAuthorCommand(): Command {
           if (opts.brief) {
             outputMarkdown = await handleBriefMode(provider, opts, resolved.model);
             const briefName = basename(opts.brief, ".yaml").replace(/\.yml$/, "");
-            outputPath = opts.output ?? `${briefName}.generated.md`;
+            outputPath = opts.output ?? `output/${briefName}.generated.md`;
           } else if (opts.script) {
             const resolvedScript = resolve(opts.script);
             const scriptContent = await readFile(resolvedScript, "utf-8");
@@ -97,10 +97,10 @@ export function createAuthorCommand(): Command {
               opts,
             );
             const scriptName = basename(opts.script, ".md");
-            outputPath = opts.output ?? `${scriptName}.refined.md`;
+            outputPath = opts.output ?? `output/${scriptName}.refined.md`;
           } else {
             outputMarkdown = await handleInteractiveMode(provider, opts, resolved.model);
-            outputPath = opts.output ?? "script.generated.md";
+            outputPath = opts.output ?? "output/script.generated.md";
           }
 
           if (opts.analyze) {
@@ -111,6 +111,7 @@ export function createAuthorCommand(): Command {
           }
 
           const resolvedOutput = resolve(outputPath);
+          await mkdir(dirname(resolvedOutput), { recursive: true });
           await writeFile(resolvedOutput, outputMarkdown, "utf-8");
           console.log(`\n  ${green("done")} Written to ${dim(resolvedOutput)}\n`);
         } finally {
@@ -129,6 +130,33 @@ export function createAuthorCommand(): Command {
   return cmd;
 }
 
+/** Try to read a README file from a directory. Returns content or undefined. */
+async function tryReadReadme(dirPath: string): Promise<string | undefined> {
+  const candidates = ["README.md", "readme.md", "README.rst", "README.txt", "README"];
+  for (const name of candidates) {
+    try {
+      const content = await readFile(join(dirPath, name), "utf-8");
+      // Truncate to ~4000 chars to stay within token budget
+      const truncated =
+        content.length > 4000 ? content.slice(0, 4000) + "\n\n[truncated]" : content;
+      return truncated;
+    } catch {
+      // Try next candidate
+    }
+  }
+  return undefined;
+}
+
+/** Check if a path exists and is accessible. */
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Prompt the user interactively for brief fields. */
 async function promptForBrief(): Promise<Brief> {
   const rl = createInterface({ input: stdin, output: stdout });
@@ -137,13 +165,50 @@ async function promptForBrief(): Promise<Brief> {
     console.log(`\n  ${cyan("Interactive Brief Builder")}\n`);
 
     const product = await rl.question(`  ${dim("Product/feature:")} `);
+
+    // Ask about product source first — this determines what context the LLM gets
+    console.log(`\n  ${dim("Where is this product?")}`);
+    console.log(`  ${dim("  1)")} Live / deployed (I have a URL)`);
+    console.log(`  ${dim("  2)")} Local project (I have a directory)`);
+    console.log(`  ${dim("  3)")} Neither / skip`);
+    const sourceChoice = await rl.question(`  ${dim("Choice (1/2/3):")} `);
+
+    let productUrl: string | undefined;
+    let productContext: string | undefined;
+    let assets: string | undefined;
+
+    if (sourceChoice.trim() === "1") {
+      const url = await rl.question(`  ${dim("Product URL:")} `);
+      productUrl = url || undefined;
+    } else if (sourceChoice.trim() === "2") {
+      const dirPath = await rl.question(`  ${dim("Project directory:")} `);
+      const resolvedDir = resolve(dirPath.trim().replace(/^~/, process.env.HOME ?? "~"));
+
+      if (await pathExists(resolvedDir)) {
+        assets = resolvedDir;
+        const readme = await tryReadReadme(resolvedDir);
+        if (readme) {
+          console.log(`  ${green("Found README")} — will include as context for the LLM`);
+          productContext = readme;
+        } else {
+          console.log(`  ${yellow("No README found")} in ${dim(resolvedDir)}`);
+          const extraContext = await rl.question(
+            `  ${dim("Paste any setup/usage info (optional, enter to skip):")} `,
+          );
+          productContext = extraContext || undefined;
+        }
+      } else {
+        console.log(`  ${yellow("Directory not found:")} ${dim(resolvedDir)}`);
+      }
+    }
+
+    console.log();
     const audience = await rl.question(`  ${dim("Target audience:")} `);
     const messagesRaw = await rl.question(`  ${dim("Key messages (comma-separated):")} `);
     const duration = await rl.question(`  ${dim("Target duration (e.g., 2 minutes):")} `);
     const tone = await rl.question(
       `  ${dim("Tone (technical/marketing/casual, optional):")} `,
     );
-    const assets = await rl.question(`  ${dim("Available assets/repos (optional):")} `);
 
     const keyMessages = messagesRaw
       .split(",")
@@ -157,6 +222,8 @@ async function promptForBrief(): Promise<Brief> {
       duration: duration || "2 minutes",
       tone: tone || undefined,
       assets: assets || undefined,
+      productUrl: productUrl || undefined,
+      productContext: productContext || undefined,
     };
   } finally {
     rl.close();
@@ -213,7 +280,6 @@ async function runRefinementLoop(
       console.log(dim(`  ... (${lines.length - 15} more lines)`));
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition, no-constant-condition
     while (true) {
       const feedback = await rl.question(`\n  ${cyan("feedback>")} `);
       const trimmed = feedback.trim().toLowerCase();

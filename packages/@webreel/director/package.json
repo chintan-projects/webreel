@@ -28,7 +28,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && cp -r src/prompts/templates dist/prompts/templates",
     "type-check": "tsc --noEmit",
     "dev": "tsc --watch",
     "test": "vitest run"

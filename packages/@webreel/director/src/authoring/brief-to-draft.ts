@@ -53,6 +53,10 @@ function formatBrief(brief: Brief): string {
     `**Target Duration:** ${brief.duration}`,
   ];
 
+  if (brief.productUrl) {
+    lines.push(`**Live URL:** ${brief.productUrl}`);
+  }
+
   if (brief.tone) {
     lines.push(`**Tone:** ${brief.tone}`);
   }
@@ -64,6 +68,12 @@ function formatBrief(brief: Brief): string {
 
   if (brief.assets) {
     lines.push(`\n**Available Assets / Repos:**\n${brief.assets}`);
+  }
+
+  if (brief.productContext) {
+    lines.push(
+      `\n## Product Context (from README / docs)\n\nUse the following real product information to generate accurate commands, URLs, and setup steps. Do NOT hallucinate URLs or commands — use only what is documented here.\n\n${brief.productContext}`,
+    );
   }
 
   return lines.join("\n");
