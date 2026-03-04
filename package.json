@@ -16,7 +16,8 @@
     "sync-examples": "bash scripts/sync-examples.sh",
     "ci:version": "changeset version && pnpm install --no-frozen-lockfile",
     "ci:publish": "pnpm build && changeset publish",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",

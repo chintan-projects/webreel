@@ -2,15 +2,6 @@
 # Severity: critical > high > medium > low
 # Status: open > investigating > fix_in_progress > resolved > wont_fix
 
-# Example:
-# - id: "BUG-001"
-#   severity: medium
-#   component: "src/api/handler.py"
-#   status: open
-#   title: "Timeout on large inputs"
-#   reported_in: "session-001"
-#   repro: "Send input > 2000 chars"
-
 bugs:
   - id: "BUG-001"
     severity: high
@@ -64,3 +55,125 @@ bugs:
       Proposed: Add a drain delay in BrowserSurface.cleanupResources()
       before calling client.close() to allow in-flight CDP operations to
       settle. May also need an AbortController for cancellable actions.
+
+  - id: "BUG-003"
+    severity: medium
+    type: enhancement
+    component: "packages/webreel/src/lib/scene-orchestrator.ts"
+    status: open
+    title: "No per-action speed control for time-compression of slow segments"
+    reported_in: "session-016"
+    description: |
+      When a scripted action takes a long time (e.g., npm run build = 20s),
+      the video plays at 1x speed creating dead air. There's no way to
+      compress slow segments or expand fast ones at the action level.
+      Current behavior: if narration is longer than video, last frame is
+      frozen. If video is longer than narration, silence fills the gap.
+      Neither case handles intentional speed changes.
+    suggested_fix: |
+      Add optional `speed` modifier to Demo Markdown actions:
+        - action: run "npm run build"
+          speed: 4x
+      Implementation: frame-sampling in the assembler — keep every Nth frame
+      based on speed multiplier. Does NOT require a full NLE/EDL rewrite.
+      Affects: scene-parser (parse speed), orchestrator (pass through),
+      video-assembler (frame sampling before encode).
+    source: "Gemini architecture review — 'Time-Lapse Rule'"
+
+  - id: "BUG-004"
+    severity: low
+    type: enhancement
+    component: "packages/webreel/src/lib/video-assembler.ts"
+    status: open
+    title: "All frames held in memory — no streaming/disk option for large demos"
+    reported_in: "session-016"
+    description: |
+      Every captured frame is stored as a Buffer[] in memory per scene.
+      For a 150-frame 1080p scene this is ~90MB, acceptable for typical
+      demos. But large demos (50+ scenes, 4K resolution, long recordings)
+      could exhaust Node.js heap. No option to stream frames to disk
+      during capture.
+    suggested_fix: |
+      Add --low-memory flag or auto-detect threshold. When enabled:
+      1. Surface.captureFrame() writes PNG directly to temp dir instead
+         of returning Buffer
+      2. SceneResult.frames becomes a framePaths: string[] (file paths)
+      3. Video assembler reads from disk instead of memory
+      Affects: Surface interface (new captureFrameToDisk method or config),
+      scene-orchestrator (conditional path), video-assembler (read from disk).
+      Non-breaking: default behavior unchanged.
+    source: "Gemini architecture review — disk-based frame storage"
+
+  - id: "BUG-005"
+    severity: medium
+    type: enhancement
+    component: "packages/@webreel/surfaces/src/desktop.ts"
+    status: open
+    title: "Desktop surface (nut.js) should be deferred — not promoted for v1 use"
+    reported_in: "session-016"
+    description: |
+      The desktop surface uses nut.js for image-based OS automation.
+      This is inherently flaky — Night Shift, notifications, display
+      scaling, and OS theme changes all break image matching. nut.js is
+      already a dynamic import (not a static dep), but the surface is
+      registered by default and documented alongside browser/terminal.
+      Users may attempt to use it and hit reliability issues.
+    suggested_fix: |
+      1. Mark desktop surface as "experimental" in docs and CLI help
+      2. Add a warning log when desktop surface is used:
+         "Desktop surface is experimental — browser and terminal surfaces
+         are recommended for reliable recordings"
+      3. Consider gating behind --experimental flag
+      4. Do not promote in templates or examples until post-PMF
+      Affects: default-surfaces.ts (add warning), docs, templates.
+    source: "Gemini architecture review — scope down surfaces"
+
+  - id: "BUG-006"
+    severity: medium
+    type: enhancement
+    component: "packages/webreel/src/lib/video-assembler.ts"
+    status: open
+    title: "Cursor overlays not yet implemented in render pipeline"
+    reported_in: "session-016"
+    description: |
+      The legacy `webreel record` pipeline renders cursor animation
+      during capture (DOM element injected into page). The modern
+      `webreel render` pipeline has no cursor overlay — captured frames
+      show raw page state without any cursor indicator. This makes it
+      hard for viewers to follow click/type actions in the final video.
+    suggested_fix: |
+      When implementing cursor overlays, apply them POST-capture as a
+      compositing step (Stage 4), not during surface capture. This ensures:
+      1. Cursor motion uses smooth Fitts's Law easing regardless of
+         action execution speed
+      2. If per-action speed modifiers are added (BUG-003), cursor speed
+         stays natural even on time-compressed segments
+      3. Cursor is rendered on final frames, not raw captures
+      Implementation: add CursorCompositor that takes frame sequence +
+      action coordinates + timing → composites cursor SVG overlay using
+      sharp. Run after frame extension, before ffmpeg encode.
+      Affects: new cursor-compositor.ts module, video-assembler integration.
+    source: "Gemini architecture review — post-capture cursor overlay"
+
+  - id: "BUG-007"
+    severity: critical
+    component: "node_modules/node-pty (pnpm install)"
+    status: resolved
+    title: "Terminal surface fails: posix_spawnp — spawn-helper missing execute permission"
+    reported_in: "2025-03-03"
+    repro: |
+      Run any render with a terminal surface scene:
+        webreel render script.md -o output.mp4
+      Error:
+        Setup failed for "terminal" surface: Failed to spawn PTY: posix_spawnp failed.
+    root_cause: |
+      pnpm does not preserve executable permissions on prebuilt native
+      binaries. The node-pty spawn-helper binary at
+      node_modules/.pnpm/node-pty@1.1.0/.../prebuilds/darwin-arm64/spawn-helper
+      has permissions -rw-r--r-- (644) instead of -rwxr-xr-x (755).
+      posix_spawnp cannot execute a file without the execute bit.
+    fix: |
+      Immediate: chmod +x on spawn-helper.
+      Permanent: add postinstall script to package.json:
+        "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
+      Will break again on every pnpm install without this.
