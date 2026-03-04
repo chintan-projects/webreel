@@ -4,7 +4,7 @@
 # Read by SessionStart hook every session.
 
 current_phase: "release-ready"
-current_focus: "Phase 5 complete — quality, testing & release readiness"
+current_focus: "Phase 6 complete — dotenv + narration audio integration"
 
 active_work: []
 
@@ -16,10 +16,6 @@ pending_decisions:
 # Only the LAST 3 sessions. Older ones archived by /session-end.
 recent_sessions:
   - date: "2026-03-03"
-    id: "session-012"
-    focus: "Phase 4 — Polish & Scale (all 7 workstreams)"
-    outcome: "WS-4.0 (CLI wiring), WS-4.1 (multi-format), WS-4.2 (HTML player), WS-4.3 (CI rendering), WS-4.4 (TTS ecosystem: 5 providers), WS-4.6 (4 templates), WS-4.7 (watch mode). 844 total tests."
-  - date: "2026-03-03"
     id: "session-013"
     focus: "Comprehensive documentation update"
     outcome: "Updated README (567 lines), new CONFIGURATION.md (597 lines), SEQUENCE-DIAGRAMS.md (9 Mermaid diagrams), ARCHITECTURE.md updated to v1.0, 4 new package READMEs."
@@ -27,7 +23,12 @@ recent_sessions:
     id: "session-014"
     focus: "Phase 5 — Quality, Testing & Release Readiness"
     outcome: "Fixed 24 lint errors. Built e2e test infrastructure (TestSurface, PNG generator, assertions, fixtures). 24 e2e tests (pipeline, orchestrator, parser, release, browser). CI workflow. 862 total tests."
+  - date: "2026-03-03"
+    id: "session-015"
+    focus: "Phase 6 — Dotenv + Narration Audio Integration"
+    outcome: "WS-6.1 (dotenv + .env.example), WS-6.2 (narration->video audio: audio-mixer, narration-helper, ffmpeg audioPath, orchestrator wiring, assembler composite audio + subtitle fix). 862 tests pass."
+    next_recommended: "Manual test with OPENAI_API_KEY in .env to verify MP4 has audio track. Test graceful degradation without API key."
 
 completed_summary:
-  total_items: 36
-  total_sessions: 14
+  total_items: 38
+  total_sessions: 15

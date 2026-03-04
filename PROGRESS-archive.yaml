@@ -175,3 +175,16 @@ sessions:
     id: "session-014"
     focus: "Phase 5 — Quality, Testing & Release Readiness"
     outcome: "Fixed 24 lint errors. Built e2e infra (TestSurface, PNG generator, assertions, fixtures). 24 e2e tests. CI workflow. 862 total tests."
+  # --- Phase 6: Dotenv + Narration Audio Integration ---
+  - id: "WR-37"
+    name: "WS-6.1: Dotenv + .env.example"
+    completed: "2026-03-03"
+  - id: "WR-38"
+    name: "WS-6.2: Narration -> Video Audio Integration"
+    completed: "2026-03-03"
+
+  # session-012 archived from recent_sessions
+  - date: "2026-03-03"
+    id: "session-012"
+    focus: "Phase 4 — Polish & Scale (all 7 workstreams)"
+    outcome: "CLI wiring, multi-format, HTML player, CI rendering, TTS ecosystem (5 providers), 4 templates, watch mode. 844 total tests."
