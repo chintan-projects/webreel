@@ -3,8 +3,8 @@
 # Completed items and session logs in PROGRESS-archive.yaml.
 # Read by SessionStart hook every session.
 
-current_phase: "phase-4-polish-scale"
-current_focus: "Phase 4 COMPLETE — 844 tests, typecheck clean, build clean"
+current_phase: "documentation"
+current_focus: "Comprehensive documentation update complete"
 
 active_work: []
 
@@ -16,10 +16,6 @@ pending_decisions:
 # Only the LAST 3 sessions. Older ones archived by /session-end.
 recent_sessions:
   - date: "2026-03-03"
-    id: "session-010"
-    focus: "Phase 3 — LLM Collaborative Authoring"
-    outcome: "LLM providers (Anthropic + OpenAI-compatible), prompt templates, authoring pipeline, webreel author CLI. 701 total tests."
-  - date: "2026-03-03"
     id: "session-011"
     focus: "Fix pre-existing typecheck failures"
     outcome: "Added @webreel/surfaces + @webreel/narrator deps to CLI, fixed ChildProcess cast. Full typecheck now passes."
@@ -27,7 +23,11 @@ recent_sessions:
     id: "session-012"
     focus: "Phase 4 — Polish & Scale (all 7 workstreams)"
     outcome: "WS-4.0 (CLI wiring), WS-4.1 (multi-format), WS-4.2 (HTML player), WS-4.3 (CI rendering), WS-4.4 (TTS ecosystem: 5 providers), WS-4.6 (4 templates), WS-4.7 (watch mode). 844 total tests."
+  - date: "2026-03-03"
+    id: "session-013"
+    focus: "Comprehensive documentation update"
+    outcome: "Updated README (567 lines), new CONFIGURATION.md (597 lines), SEQUENCE-DIAGRAMS.md (9 Mermaid diagrams), ARCHITECTURE.md updated to v1.0, 4 new package READMEs (narrator, director, surfaces, annotations)."
 
 completed_summary:
-  total_items: 30
-  total_sessions: 12
+  total_items: 31
+  total_sessions: 13
