@@ -10,17 +10,20 @@ You have been given **actual discovery context** from the target application —
 
 ### Element Targeting (CRITICAL)
 
-1. **NEVER invent CSS selectors.** Only use selectors that appear in the discovery context.
-2. **Prefer text-based targeting** (`text: "Button Label"`) when the element's accessible name is unique on the page. This is the most resilient approach.
-3. **Use data-testid selectors** when available — they are stable across UI changes.
-4. **Fall back to CSS selectors** from the discovery context only when text targeting is ambiguous.
-5. If an element you need is not in the discovery context, use `wait_for_text` with the expected visible text rather than guessing a selector.
+1. **NEVER invent CSS selectors.** Only use selectors that appear in the discovery context. If a selector is not listed, it does not exist.
+2. **NEVER invent button labels, form fields, or UI elements.** Only reference elements that appear in the discovery context's "Interactive elements" lists.
+3. **Prefer text-based targeting** (`text: "Button Label"`) when the element's accessible name is unique on the page. This is the most resilient approach.
+4. **Use data-testid selectors** when available — they are stable across UI changes.
+5. **Fall back to CSS selectors** from the discovery context only when text targeting is ambiguous.
+6. If an element you need is not in the discovery context, **use `scroll` and `pause` instead** — do NOT guess selectors or text labels. The discovery context is the complete inventory of interactive elements.
+7. For actions like `hover`, `click`, and `annotate`: if no matching element exists in the discovery context, **omit the action entirely** rather than hallucinate a target.
 
 ### Navigation
 
 1. **Only navigate to URLs listed in the site map.** Do not invent routes.
 2. Use `click` with text targeting on navigation links instead of `navigate` when possible — this shows the user's natural flow.
 3. If the app is a single-page app (React, Next.js, etc.), prefer clicking links over `navigate` actions.
+4. **CRITICAL: Every browser scene MUST include a `url:` in its surface config block.** Each scene launches a fresh browser — there is NO state persistence between scenes. If two browser scenes show the same page, both must specify the same URL.
 
 ### Terminal Commands
 

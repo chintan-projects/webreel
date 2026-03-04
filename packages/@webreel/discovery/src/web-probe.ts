@@ -109,18 +109,20 @@ export async function probeApp(
 
     return { entryUrl, pages, siteMap };
   } finally {
-    if (client) {
-      try {
-        await client.close();
-      } catch {
-        // Safe to ignore
-      }
-    }
+    // Kill Chrome FIRST to prevent native mutex crashes from in-flight CDP ops
     if (chrome) {
       try {
         chrome.kill();
       } catch {
         // Safe to ignore
+      }
+    }
+    await pause(200);
+    if (client) {
+      try {
+        await client.close();
+      } catch {
+        // CDP connection already dead from Chrome kill — expected
       }
     }
   }
@@ -142,8 +144,14 @@ async function probePage(
       rejectAfter(timeoutMs, `Navigation to ${url} timed out`),
     ]);
 
-    // Wait for page to settle
-    await pause(1000);
+    // Wait for SPA hydration — React/Next.js/Vue apps need time after the
+    // initial HTML loads to render interactive elements into the DOM.
+    // 1s is not enough for most SPAs; 3s handles the common case.
+    await pause(2000);
+
+    // Network-idle heuristic: wait until document.readyState is complete
+    // and no pending fetch/XHR requests for 500ms
+    await waitForIdle(client, 3000);
 
     // Extract page title
     const title = await evaluateString(client, "document.title || ''");
@@ -340,4 +348,37 @@ function rejectAfter(ms: number, message: string): Promise<never> {
   return new Promise((_, reject) => {
     setTimeout(() => reject(new Error(message)), ms);
   });
+}
+
+/**
+ * Wait for the page to become idle — document loaded + no pending requests.
+ * Uses a simple polling approach: check readyState and wait for DOM stability.
+ */
+async function waitForIdle(client: CDPClient, maxWaitMs: number): Promise<void> {
+  const start = Date.now();
+  let lastElementCount = -1;
+
+  while (Date.now() - start < maxWaitMs) {
+    const { result } = await client.Runtime.evaluate({
+      expression: `({
+        ready: document.readyState,
+        count: document.querySelectorAll('button, a[href], input, [role="button"], [data-testid]').length
+      })`,
+      returnByValue: true,
+    });
+
+    const state = result.value as { ready: string; count: number } | undefined;
+    if (!state) break;
+
+    // If DOM is complete and element count stabilized, we're done
+    if (
+      state.ready === "complete" &&
+      state.count === lastElementCount &&
+      state.count > 0
+    ) {
+      return;
+    }
+    lastElementCount = state.count;
+    await pause(500);
+  }
 }

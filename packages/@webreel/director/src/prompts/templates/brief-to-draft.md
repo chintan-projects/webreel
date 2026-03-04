@@ -43,6 +43,7 @@ You are a demo script author for webreel. Your task is to generate a complete De
 - Use `title` for intro/outro cards, section dividers, and key messages.
 - Use `application` for native desktop application demos.
 - Use `desktop` for full-screen workflows involving multiple applications.
+- **CRITICAL: Every browser scene MUST include a `url:` in its surface config block.** Each scene launches a fresh browser — there is NO state persistence between scenes. If consecutive browser scenes show the same page, every one must specify the URL.
 
 ### Quality
 

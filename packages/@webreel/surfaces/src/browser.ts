@@ -338,18 +338,11 @@ export class BrowserSurface implements Surface {
 
   /** Clean up all browser resources. Safe to call multiple times. */
   private async cleanupResources(): Promise<void> {
-    // Brief drain delay — lets in-flight CDP operations settle before close
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    if (this.client) {
-      try {
-        await this.client.close();
-      } catch {
-        // CDP connection may already be closed -- safe to ignore
-      }
-      this.client = null;
-    }
-
+    // Kill Chrome process FIRST — this prevents native mutex crashes caused by
+    // in-flight CDP operations racing with WebSocket close. The client.close()
+    // sends a WS close frame, but if Chrome's debugger is mid-operation, the
+    // native C++ handler crashes with "mutex lock failed: Invalid argument".
+    // Killing Chrome first severs the connection cleanly at the OS level.
     if (this.chrome) {
       try {
         this.chrome.kill();
@@ -357,6 +350,18 @@ export class BrowserSurface implements Surface {
         // Chrome process may already be dead -- safe to ignore
       }
       this.chrome = null;
+    }
+
+    // Wait for Chrome to fully exit before touching the CDP client
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    if (this.client) {
+      try {
+        await this.client.close();
+      } catch {
+        // CDP connection already dead from Chrome kill -- expected
+      }
+      this.client = null;
     }
 
     this.recordingContext = null;
