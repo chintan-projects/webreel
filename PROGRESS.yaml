@@ -4,7 +4,7 @@
 # Read by SessionStart hook every session.
 
 current_phase: "phase-3-llm-authoring"
-current_focus: "Phase 1 + Phase 2 + Phase 3 COMPLETE — 701 tests, ready for Phase 4"
+current_focus: "Phase 1 + Phase 2 + Phase 3 COMPLETE — 701 tests, typecheck clean, ready for Phase 4"
 
 active_work: []
 
@@ -17,10 +17,6 @@ pending_decisions:
 # Only the LAST 3 sessions. Older ones archived by /session-end.
 recent_sessions:
   - date: "2026-03-03"
-    id: "session-008"
-    focus: "WS-1.2 parser tests + Phase 1 verification"
-    outcome: "61 parser tests, parseMeta bug fix, Phase 1 fully verified."
-  - date: "2026-03-03"
     id: "session-009"
     focus: "WS-2.1 through WS-2.8 — Complete Phase 2"
     outcome: "All 8 Phase 2 workstreams: 3 new surfaces, annotations, transitions, subtitles, caching, plan command. 524 total tests."
@@ -28,7 +24,11 @@ recent_sessions:
     id: "session-010"
     focus: "Phase 3 — LLM Collaborative Authoring"
     outcome: "LLM providers (Anthropic + OpenAI-compatible), prompt templates, authoring pipeline, webreel author CLI. 701 total tests."
+  - date: "2026-03-03"
+    id: "session-011"
+    focus: "Fix pre-existing typecheck failures"
+    outcome: "Added @webreel/surfaces + @webreel/narrator deps to CLI, fixed ChildProcess cast. Full typecheck now passes."
 
 completed_summary:
   total_items: 23
-  total_sessions: 10
+  total_sessions: 11
