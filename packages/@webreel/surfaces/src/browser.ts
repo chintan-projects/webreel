@@ -338,6 +338,9 @@ export class BrowserSurface implements Surface {
 
   /** Clean up all browser resources. Safe to call multiple times. */
   private async cleanupResources(): Promise<void> {
+    // Brief drain delay — lets in-flight CDP operations settle before close
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     if (this.client) {
       try {
         await this.client.close();

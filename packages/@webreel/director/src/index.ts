@@ -62,6 +62,11 @@ export { reviewRender } from "./authoring/post-render-review.js";
 export type {
   ProviderConfig,
   Brief,
+  BriefAppContext,
+  BriefWebProbe,
+  BriefDiscoveredPage,
+  BriefDiscoveredElement,
+  BriefProjectScan,
   GenerateResult,
   RefinementResult,
   PacingReport,

@@ -166,6 +166,28 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/@webreel/discovery:
+    dependencies:
+      '@webreel/core':
+        specifier: workspace:*
+        version: link:../core
+      '@webreel/director':
+        specifier: workspace:*
+        version: link:../director
+      yaml:
+        specifier: ^2.8.2
+        version: 2.8.2
+    devDependencies:
+      '@types/node':
+        specifier: 25.3.0
+        version: 25.3.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.2)
+
   packages/@webreel/narrator:
     dependencies:
       '@webreel/core':
@@ -225,6 +247,9 @@ importers:
       '@webreel/director':
         specifier: workspace:*
         version: link:../@webreel/director
+      '@webreel/discovery':
+        specifier: workspace:*
+        version: link:../@webreel/discovery
       '@webreel/narrator':
         specifier: workspace:*
         version: link:../@webreel/narrator

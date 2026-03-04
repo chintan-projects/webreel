@@ -45,6 +45,7 @@ export class TerminalSurface implements Surface {
   readonly type: SurfaceType = "terminal";
 
   private ptyProcess: pty.IPty | null = null;
+  private ptyDataDisposable: pty.IDisposable | null = null;
   private terminal: Terminal | null = null;
   private serializer: SerializeAddon | null = null;
   private asciicast: AsciicastWriter | null = null;
@@ -98,10 +99,11 @@ export class TerminalSurface implements Surface {
       );
     }
 
-    this.ptyProcess.onData((data: string) => {
+    this.ptyDataDisposable = this.ptyProcess.onData((data: string) => {
+      if (this.tornDown) return;
       this.outputBuffer += data;
-      this.terminal!.write(data);
-      this.asciicast!.writeOutput(data);
+      this.terminal?.write(data);
+      this.asciicast?.writeOutput(data);
     });
 
     await this.waitForSettle(opts.promptSettleMs);
@@ -165,6 +167,20 @@ export class TerminalSurface implements Surface {
     if (this.tornDown) return;
     this.tornDown = true;
 
+    // 1. Disconnect PTY data listener first — prevents callbacks during cleanup
+    if (this.ptyDataDisposable) {
+      try {
+        this.ptyDataDisposable.dispose();
+      } catch {
+        // Safe to ignore
+      }
+      this.ptyDataDisposable = null;
+    }
+
+    // 2. Brief drain delay — lets in-flight onData callbacks complete
+    await delay(50);
+
+    // 3. Kill PTY process
     if (this.ptyProcess) {
       try {
         this.ptyProcess.kill();
@@ -174,6 +190,7 @@ export class TerminalSurface implements Surface {
       this.ptyProcess = null;
     }
 
+    // 4. Dispose xterm resources
     if (this.serializer) {
       this.serializer.dispose();
       this.serializer = null;
@@ -184,6 +201,7 @@ export class TerminalSurface implements Surface {
       this.terminal = null;
     }
 
+    // 5. Finish asciicast recording
     if (this.asciicast) {
       await this.asciicast.finish();
       this.asciicast = null;

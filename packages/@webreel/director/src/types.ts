@@ -262,6 +262,58 @@ export interface Brief {
   readonly productUrl?: string;
   /** Product context extracted from README or docs (auto-populated). */
   readonly productContext?: string;
+  /**
+   * Discovery context from @webreel/discovery (web probe + project scan).
+   * When present, enables discovery-aware script generation with real
+   * selectors, routes, and commands instead of hallucinated ones.
+   *
+   * Typed as BriefAppContext to avoid circular dependency with @webreel/discovery.
+   */
+  readonly appContext?: BriefAppContext;
+}
+
+/**
+ * Lightweight app context embedded in a Brief.
+ * Mirrors the shape of @webreel/discovery's AppContext without importing it.
+ */
+export interface BriefAppContext {
+  readonly webProbe?: BriefWebProbe;
+  readonly projectScan?: BriefProjectScan;
+}
+
+/** Web probe summary for the Brief. */
+export interface BriefWebProbe {
+  readonly entryUrl: string;
+  readonly pages: readonly BriefDiscoveredPage[];
+  readonly siteMap: readonly { readonly url: string; readonly title: string }[];
+}
+
+/** A discovered page summary. */
+export interface BriefDiscoveredPage {
+  readonly url: string;
+  readonly title: string;
+  readonly elements: readonly BriefDiscoveredElement[];
+  readonly links: readonly { readonly text: string; readonly href: string }[];
+}
+
+/** A discovered interactive element. */
+export interface BriefDiscoveredElement {
+  readonly role: string;
+  readonly name: string;
+  readonly selector: string;
+  readonly textContent?: string;
+  readonly tagName: string;
+}
+
+/** Project scan summary for the Brief. */
+export interface BriefProjectScan {
+  readonly startCommands: readonly {
+    readonly command: string;
+    readonly source: string;
+  }[];
+  readonly ports: readonly { readonly port: number; readonly source: string }[];
+  readonly framework?: string;
+  readonly readme?: string;
 }
 
 /** Result of the generate-and-validate pipeline. */

@@ -4,7 +4,9 @@
 # Read by SessionStart hook every session.
 
 current_phase: "release-ready"
-current_focus: "Phase 6 complete — dotenv + narration audio integration"
+current_focus: "Discovery-driven script generation complete — LLM now uses real app data"
+last_updated: "2026-03-03"
+last_session_id: "session-017"
 
 active_work: []
 
@@ -16,19 +18,32 @@ pending_decisions:
 # Only the LAST 3 sessions. Older ones archived by /session-end.
 recent_sessions:
   - date: "2026-03-03"
-    id: "session-013"
-    focus: "Comprehensive documentation update"
-    outcome: "Updated README (567 lines), new CONFIGURATION.md (597 lines), SEQUENCE-DIAGRAMS.md (9 Mermaid diagrams), ARCHITECTURE.md updated to v1.0, 4 new package READMEs."
-  - date: "2026-03-03"
-    id: "session-014"
-    focus: "Phase 5 — Quality, Testing & Release Readiness"
-    outcome: "Fixed 24 lint errors. Built e2e test infrastructure (TestSurface, PNG generator, assertions, fixtures). 24 e2e tests (pipeline, orchestrator, parser, release, browser). CI workflow. 862 total tests."
-  - date: "2026-03-03"
     id: "session-015"
     focus: "Phase 6 — Dotenv + Narration Audio Integration"
     outcome: "WS-6.1 (dotenv + .env.example), WS-6.2 (narration->video audio: audio-mixer, narration-helper, ffmpeg audioPath, orchestrator wiring, assembler composite audio + subtitle fix). 862 tests pass."
-    next_recommended: "Manual test with OPENAI_API_KEY in .env to verify MP4 has audio track. Test graceful degradation without API key."
+  - date: "2026-03-03"
+    id: "session-016"
+    focus: "Bug fixes — mutex crash, PTY spawn, per-action progress, README truncation"
+    outcome: "Fixed BUG-002 (mutex crash in terminal/browser surfaces), BUG-007 (PTY spawn-helper chmod), BUG-008 (per-action progress logging), BUG-010 (smart README truncation). Logged BUG-003 through BUG-009."
+  - date: "2026-03-03"
+    id: "session-017"
+    focus: "Discovery-driven script generation — @webreel/discovery package"
+    outcome: |
+      Designed and implemented discovery pipeline to eliminate LLM hallucinations.
+      New @webreel/discovery package: ProjectScanner (package.json, Makefile, .env, docker-compose, README),
+      WebProbe (headless Chrome crawl, element extraction, link discovery),
+      ScriptChecker (pre-render validation of selectors/URLs/commands against probed data).
+      Updated director: BriefAppContext types, discovery-aware prompt template, formatBrief with discovery context.
+      Updated CLI: --skip-discovery flag, auto-start/probe flow, YAML brief app config support.
+      22 new discovery tests + 174 director tests + all packages pass (12/12 turbo tasks).
+    artifacts:
+      - "packages/@webreel/discovery/ (new package: types, project-scanner, web-probe, script-checker, tests)"
+      - "packages/@webreel/director/src/prompts/templates/brief-to-draft-discovery.md"
+      - "packages/@webreel/director/src/types.ts (BriefAppContext types)"
+      - "packages/@webreel/director/src/authoring/brief-to-draft.ts (discovery-aware formatting)"
+      - "packages/webreel/src/commands/author.ts (discovery CLI integration)"
+    next_recommended: "End-to-end test: run webreel author against a real project with discovery enabled, then webreel render to verify generated selectors work."
 
 completed_summary:
-  total_items: 38
-  total_sessions: 15
+  total_items: 41
+  total_sessions: 17

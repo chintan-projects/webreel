@@ -80,6 +80,10 @@ const DEFAULT_CRF = 23;
 const DEFAULT_PRESET = "fast";
 const HOLD_FRAMES = 30;
 
+const dim = (s: string): string => `\x1b[2m${s}\x1b[0m`;
+const green = (s: string): string => `\x1b[32m${s}\x1b[0m`;
+const cyan = (s: string): string => `\x1b[36m${s}\x1b[0m`;
+
 /**
  * Central orchestrator that wires parser, surfaces, and compositor together.
  * Supports per-scene caching for incremental re-rendering.
@@ -125,12 +129,23 @@ class SceneOrchestrator {
     const narrationEngine = createNarrationEngine(narratorConfig);
 
     const sceneResults: SceneResult[] = [];
+    const totalScenes = script.acts.reduce(
+      (sum: number, a: Act) => sum + a.scenes.length,
+      0,
+    );
+    let sceneIndex = 0;
+
     try {
       for (const act of script.acts) {
         if (options.act && act.name !== options.act) continue;
 
         for (const scene of act.scenes) {
           if (options.scene && scene.name !== options.scene) continue;
+          sceneIndex++;
+
+          console.log(
+            `\n  ${cyan("▶")} Scene ${sceneIndex}/${totalScenes}: ${dim(act.name)} / ${scene.name} ${dim(`[${scene.surface.type}]`)}`,
+          );
 
           const result = await this.renderOrLoadScene(
             scene,
@@ -143,9 +158,7 @@ class SceneOrchestrator {
             narrationEngine,
           );
           sceneResults.push(result);
-          if (options.verbose) {
-            this.logSceneComplete(result);
-          }
+          this.logSceneComplete(result);
         }
       }
     } finally {
@@ -301,8 +314,14 @@ class SceneOrchestrator {
       frames.push(await surface.captureFrame());
 
       const captures: Record<string, string> = {};
-      for (let i = 0; i < scene.actions.length; i++) {
+      const totalActions = scene.actions.length;
+      for (let i = 0; i < totalActions; i++) {
         const action = scene.actions[i]!;
+        const actionLabel = formatActionLabel(action.type, action.params);
+        console.log(
+          `    ${dim(`(${i + 1}/${totalActions})`)} ${action.type} ${dim(actionLabel)}`,
+        );
+        const actionStart = Date.now();
         try {
           const result = await surface.execute(
             { type: action.type, params: action.params },
@@ -317,6 +336,10 @@ class SceneOrchestrator {
             Object.assign(captures, result.captures);
           }
         } catch (err: unknown) {
+          const elapsed = Date.now() - actionStart;
+          console.log(
+            `    ${dim(`(${i + 1}/${totalActions})`)} ✗ failed after ${formatDuration(elapsed)}`,
+          );
           throw new WebReelError(
             `Action ${i} ("${action.type}") failed in scene "${scene.name}": ${errorMessage(err)}`,
             { code: "ACTION_FAILED", cause: toError(err) },
@@ -439,8 +462,6 @@ class SceneOrchestrator {
       (sum: number, a: Act) => sum + a.scenes.length,
       0,
     );
-    const dim = (s: string): string => `\x1b[2m${s}\x1b[0m`;
-    const green = (s: string): string => `\x1b[32m${s}\x1b[0m`;
     const yellow = (s: string): string => `\x1b[33m${s}\x1b[0m`;
 
     const cachedHashes = cacheEnabled
@@ -476,9 +497,9 @@ class SceneOrchestrator {
   }
 
   private logSceneComplete(result: SceneResult): void {
-    const tag = result.fromCache ? " (cached)" : "";
+    const tag = result.fromCache ? dim(" (cached)") : "";
     console.log(
-      `  [${result.actName}/${result.sceneName}] ${result.frames.length} frames in ${result.durationMs}ms${tag}`,
+      `  ${green("✓")} ${result.sceneName} — ${result.frames.length} frames, ${formatDuration(result.durationMs)}${tag}`,
     );
   }
 }
@@ -491,6 +512,43 @@ function errorMessage(err: unknown): string {
 /** Coerce an unknown thrown value to Error. */
 function toError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
+}
+
+/** Format a duration in ms to a human-readable string. */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** Format action params into a short label for progress output. */
+function formatActionLabel(type: string, params: Record<string, unknown>): string {
+  switch (type) {
+    case "run":
+      return typeof params["command"] === "string"
+        ? `"${truncate(params["command"] as string, 60)}"`
+        : "";
+    case "type":
+      return typeof params["text"] === "string"
+        ? `"${truncate(params["text"] as string, 40)}"`
+        : "";
+    case "click":
+      return typeof params["selector"] === "string" ? (params["selector"] as string) : "";
+    case "navigate":
+      return typeof params["url"] === "string" ? (params["url"] as string) : "";
+    case "wait_for_output":
+      return typeof params["pattern"] === "string"
+        ? `"${params["pattern"] as string}"`
+        : "";
+    default: {
+      const firstVal = Object.values(params)[0];
+      return typeof firstVal === "string" ? truncate(firstVal, 40) : "";
+    }
+  }
+}
+
+/** Truncate a string with ellipsis. */
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
 export { SceneOrchestrator, type RenderOptions, type SceneResult, type RenderConfig };

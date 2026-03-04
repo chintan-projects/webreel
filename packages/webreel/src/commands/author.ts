@@ -6,15 +6,25 @@
  * - Refine mode: Iteratively refine an existing script with feedback.
  * - Interactive mode: Prompt for brief fields, then generate.
  *
+ * When a project directory or live URL is provided, runs the discovery
+ * pipeline (ProjectScanner + WebProbe) to give the LLM real selectors,
+ * commands, and routes instead of hallucinated ones.
+ *
  * Delegates to @webreel/director's authoring pipeline for LLM calls.
  */
 
 import { resolve, basename, dirname, join } from "node:path";
-import { readFile, writeFile, mkdir, access, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
+import { spawn, type ChildProcess } from "node:child_process";
 import { stdin, stdout } from "node:process";
 import { Command } from "commander";
-import type { LLMProvider, Brief, PacingReport } from "@webreel/director";
+import type {
+  LLMProvider,
+  Brief,
+  BriefAppContext,
+  PacingReport,
+} from "@webreel/director";
 
 /** CLI option shape parsed by commander. */
 interface AuthorCommandOptions {
@@ -25,6 +35,14 @@ interface AuthorCommandOptions {
   readonly model?: string;
   readonly analyze?: boolean;
   readonly verbose?: boolean;
+  readonly skipDiscovery?: boolean;
+}
+
+/** Shape of the YAML brief file's `app` section. */
+interface BriefAppConfig {
+  readonly directory?: string;
+  readonly url?: string;
+  readonly start_command?: string;
 }
 
 const dim = (s: string): string => `\x1b[2m${s}\x1b[0m`;
@@ -50,6 +68,7 @@ export function createAuthorCommand(): Command {
     .option("--model <name>", "Model override")
     .option("--analyze", "Run pacing analysis after generation")
     .option("--verbose", "Show detailed progress")
+    .option("--skip-discovery", "Skip app discovery (use README context only)")
     .action(async (opts: AuthorCommandOptions) => {
       try {
         const {
@@ -130,22 +149,132 @@ export function createAuthorCommand(): Command {
   return cmd;
 }
 
-/** Try to read a README file from a directory. Returns content or undefined. */
-async function tryReadReadme(dirPath: string): Promise<string | undefined> {
-  const candidates = ["README.md", "readme.md", "README.rst", "README.txt", "README"];
-  for (const name of candidates) {
-    try {
-      const content = await readFile(join(dirPath, name), "utf-8");
-      // Truncate to ~4000 chars to stay within token budget
-      const truncated =
-        content.length > 4000 ? content.slice(0, 4000) + "\n\n[truncated]" : content;
-      return truncated;
-    } catch {
-      // Try next candidate
+// ─── Discovery Integration ───────────────────────────────────────────
+
+/**
+ * Run app discovery for a project directory and optional live URL.
+ * Returns a BriefAppContext to attach to the Brief.
+ */
+async function runDiscovery(
+  dirPath?: string,
+  liveUrl?: string,
+  startCommand?: string,
+  verbose?: boolean,
+): Promise<BriefAppContext | undefined> {
+  const { scanProject, probeApp } = await import("@webreel/discovery");
+
+  const context: {
+    webProbe?: BriefAppContext["webProbe"];
+    projectScan?: BriefAppContext["projectScan"];
+  } = {};
+
+  // Project scan
+  if (dirPath) {
+    if (verbose) console.log(`  ${dim("Scanning project...")} ${dim(dirPath)}`);
+    const scan = await scanProject(dirPath);
+    context.projectScan = scan;
+
+    if (verbose) {
+      console.log(
+        `  ${green("Scanned")} ${scan.startCommands.length} commands, ` +
+          `${scan.ports.length} ports, framework: ${scan.framework ?? "unknown"}`,
+      );
     }
+  }
+
+  // Web probe (if URL provided or if we should auto-start)
+  let probeUrl = liveUrl;
+  let spawnedProcess: ChildProcess | null = null;
+
+  if (!probeUrl && startCommand && dirPath && context.projectScan) {
+    // Auto-start the app and probe it
+    const port = context.projectScan.ports[0]?.port ?? 3000;
+    probeUrl = `http://localhost:${port}`;
+
+    if (verbose) {
+      console.log(`  ${dim("Starting app...")} ${startCommand} ${dim(`(port ${port})`)}`);
+    }
+
+    spawnedProcess = await startAppProcess(startCommand, dirPath);
+    await waitForPort(port, 30_000);
+
+    if (verbose) {
+      console.log(`  ${green("App started")} on port ${port}`);
+    }
+  }
+
+  if (probeUrl) {
+    if (verbose) console.log(`  ${dim("Probing app...")} ${probeUrl}`);
+
+    try {
+      const probe = await probeApp(probeUrl, {
+        maxDepth: 2,
+        maxPages: 10,
+      });
+      context.webProbe = probe;
+
+      if (verbose) {
+        console.log(
+          `  ${green("Probed")} ${probe.pages.length} pages, ` +
+            `${probe.pages.reduce((sum, p) => sum + p.elements.length, 0)} elements`,
+        );
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`  ${yellow("Probe failed:")} ${msg}`);
+      console.log(`  ${dim("Continuing with project scan data only.")}`);
+    } finally {
+      if (spawnedProcess) {
+        spawnedProcess.kill("SIGTERM");
+      }
+    }
+  }
+
+  if (context.projectScan || context.webProbe) {
+    return context as BriefAppContext;
   }
   return undefined;
 }
+
+/**
+ * Start an app process for probing. Returns the ChildProcess handle.
+ */
+async function startAppProcess(command: string, cwd: string): Promise<ChildProcess> {
+  const parts = command.split(/\s+/);
+  const proc = spawn(parts[0]!, parts.slice(1), {
+    cwd,
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env },
+  });
+  return proc;
+}
+
+/**
+ * Wait for a TCP port to become available.
+ */
+async function waitForPort(port: number, timeoutMs: number): Promise<void> {
+  const { createConnection } = await import("node:net");
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const connected = await new Promise<boolean>((resolve) => {
+      const socket = createConnection({ port, host: "127.0.0.1" }, () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.on("error", () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+    if (connected) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  throw new Error(`Timeout waiting for port ${port} after ${timeoutMs}ms`);
+}
+
+// ─── Existing Utilities ──────────────────────────────────────────────
 
 /** Check if a path exists and is accessible. */
 async function pathExists(p: string): Promise<boolean> {
@@ -154,79 +283,6 @@ async function pathExists(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
-  }
-}
-
-/** Prompt the user interactively for brief fields. */
-async function promptForBrief(): Promise<Brief> {
-  const rl = createInterface({ input: stdin, output: stdout });
-
-  try {
-    console.log(`\n  ${cyan("Interactive Brief Builder")}\n`);
-
-    const product = await rl.question(`  ${dim("Product/feature:")} `);
-
-    // Ask about product source first — this determines what context the LLM gets
-    console.log(`\n  ${dim("Where is this product?")}`);
-    console.log(`  ${dim("  1)")} Live / deployed (I have a URL)`);
-    console.log(`  ${dim("  2)")} Local project (I have a directory)`);
-    console.log(`  ${dim("  3)")} Neither / skip`);
-    const sourceChoice = await rl.question(`  ${dim("Choice (1/2/3):")} `);
-
-    let productUrl: string | undefined;
-    let productContext: string | undefined;
-    let assets: string | undefined;
-
-    if (sourceChoice.trim() === "1") {
-      const url = await rl.question(`  ${dim("Product URL:")} `);
-      productUrl = url || undefined;
-    } else if (sourceChoice.trim() === "2") {
-      const dirPath = await rl.question(`  ${dim("Project directory:")} `);
-      const resolvedDir = resolve(dirPath.trim().replace(/^~/, process.env.HOME ?? "~"));
-
-      if (await pathExists(resolvedDir)) {
-        assets = resolvedDir;
-        const readme = await tryReadReadme(resolvedDir);
-        if (readme) {
-          console.log(`  ${green("Found README")} — will include as context for the LLM`);
-          productContext = readme;
-        } else {
-          console.log(`  ${yellow("No README found")} in ${dim(resolvedDir)}`);
-          const extraContext = await rl.question(
-            `  ${dim("Paste any setup/usage info (optional, enter to skip):")} `,
-          );
-          productContext = extraContext || undefined;
-        }
-      } else {
-        console.log(`  ${yellow("Directory not found:")} ${dim(resolvedDir)}`);
-      }
-    }
-
-    console.log();
-    const audience = await rl.question(`  ${dim("Target audience:")} `);
-    const messagesRaw = await rl.question(`  ${dim("Key messages (comma-separated):")} `);
-    const duration = await rl.question(`  ${dim("Target duration (e.g., 2 minutes):")} `);
-    const tone = await rl.question(
-      `  ${dim("Tone (technical/marketing/casual, optional):")} `,
-    );
-
-    const keyMessages = messagesRaw
-      .split(",")
-      .map((m) => m.trim())
-      .filter(Boolean);
-
-    return {
-      product: product || "Demo Product",
-      audience: audience || "Developers",
-      keyMessages: keyMessages.length > 0 ? keyMessages : ["Product overview"],
-      duration: duration || "2 minutes",
-      tone: tone || undefined,
-      assets: assets || undefined,
-      productUrl: productUrl || undefined,
-      productContext: productContext || undefined,
-    };
-  } finally {
-    rl.close();
   }
 }
 
@@ -254,6 +310,204 @@ function displayPacingReport(report: PacingReport): void {
       }
     }
   }
+}
+
+// ─── Mode Handlers ───────────────────────────────────────────────────
+
+/** Prompt the user interactively for brief fields with discovery. */
+async function promptForBrief(skipDiscovery: boolean, verbose?: boolean): Promise<Brief> {
+  const rl = createInterface({ input: stdin, output: stdout });
+
+  try {
+    console.log(`\n  ${cyan("Interactive Brief Builder")}\n`);
+
+    const product = await rl.question(`  ${dim("Product/feature:")} `);
+
+    // Ask about product source — this determines discovery scope
+    console.log(`\n  ${dim("Where is this product?")}`);
+    console.log(`  ${dim("  1)")} Live / deployed (I have a URL)`);
+    console.log(`  ${dim("  2)")} Local project (I have a directory)`);
+    console.log(`  ${dim("  3)")} Neither / skip`);
+    const sourceChoice = await rl.question(`  ${dim("Choice (1/2/3):")} `);
+
+    let productUrl: string | undefined;
+    let productContext: string | undefined;
+    let assets: string | undefined;
+    let appContext: BriefAppContext | undefined;
+
+    if (sourceChoice.trim() === "1") {
+      const url = await rl.question(`  ${dim("Product URL:")} `);
+      productUrl = url || undefined;
+
+      if (productUrl && !skipDiscovery) {
+        console.log(`\n  ${dim("Running web probe...")}`);
+        appContext = await runDiscovery(undefined, productUrl, undefined, verbose);
+      }
+    } else if (sourceChoice.trim() === "2") {
+      const dirPath = await rl.question(`  ${dim("Project directory:")} `);
+      const resolvedDir = resolve(dirPath.trim().replace(/^~/, process.env.HOME ?? "~"));
+
+      if (await pathExists(resolvedDir)) {
+        assets = resolvedDir;
+
+        if (!skipDiscovery) {
+          console.log(`\n  ${dim("Running project discovery...")}`);
+          appContext = await runDiscovery(resolvedDir, undefined, undefined, verbose);
+
+          // If scan found start commands + ports, offer to probe the live app
+          if (appContext?.projectScan && !appContext.webProbe) {
+            const scan = appContext.projectScan;
+            if (scan.startCommands.length > 0 && scan.ports.length > 0) {
+              const firstCmd = scan.startCommands[0]!;
+              const firstPort = scan.ports[0]!;
+              console.log(
+                `\n  ${dim("Found:")} ${firstCmd.command} ${dim(`(port ${firstPort.port})`)}`,
+              );
+              const probe = await rl.question(
+                `  ${dim("Start the app and probe its UI? (Y/n):")} `,
+              );
+              if (!probe.trim() || probe.trim().toLowerCase() === "y") {
+                appContext = await runDiscovery(
+                  resolvedDir,
+                  undefined,
+                  firstCmd.command,
+                  verbose,
+                );
+              }
+            }
+          }
+
+          // Populate productContext from scan's readme
+          if (appContext?.projectScan?.readme) {
+            productContext = appContext.projectScan.readme;
+          }
+        } else {
+          // Skip discovery — just use README
+          const { scanProject } = await import("@webreel/discovery");
+          const scan = await scanProject(resolvedDir);
+          productContext = scan.readme;
+          if (productContext) {
+            console.log(
+              `  ${green("Found README")} — will include as context for the LLM`,
+            );
+          }
+        }
+      } else {
+        console.log(`  ${yellow("Directory not found:")} ${dim(resolvedDir)}`);
+      }
+    }
+
+    console.log();
+    const audience = await rl.question(`  ${dim("Target audience:")} `);
+    const messagesRaw = await rl.question(`  ${dim("Key messages (comma-separated):")} `);
+    const duration = await rl.question(`  ${dim("Target duration (e.g., 2 minutes):")} `);
+    const tone = await rl.question(
+      `  ${dim("Tone (technical/marketing/casual, optional):")} `,
+    );
+
+    const keyMessages = messagesRaw
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean);
+
+    if (appContext) {
+      const pageCount = appContext.webProbe?.pages.length ?? 0;
+      const cmdCount = appContext.projectScan?.startCommands.length ?? 0;
+      console.log(
+        `\n  ${green("Discovery attached")} — ${pageCount} pages, ${cmdCount} commands`,
+      );
+    }
+
+    return {
+      product: product || "Demo Product",
+      audience: audience || "Developers",
+      keyMessages: keyMessages.length > 0 ? keyMessages : ["Product overview"],
+      duration: duration || "2 minutes",
+      tone: tone || undefined,
+      assets: assets || undefined,
+      productUrl: productUrl || undefined,
+      productContext: productContext || undefined,
+      appContext: appContext || undefined,
+    };
+  } finally {
+    rl.close();
+  }
+}
+
+/** Handle brief mode: parse YAML brief, run discovery, generate a draft. */
+async function handleBriefMode(
+  provider: LLMProvider,
+  opts: AuthorCommandOptions,
+  model: string,
+): Promise<string> {
+  const { parse: parseYaml } = await import("yaml");
+  const { generateDraft } = await import("@webreel/director");
+
+  const briefPath = resolve(opts.brief!);
+  const briefContent = await readFile(briefPath, "utf-8");
+  const rawBrief = parseYaml(briefContent) as Brief & { app?: BriefAppConfig };
+
+  if (opts.verbose) {
+    console.log(`  ${dim("Brief:")} ${briefPath}`);
+    console.log(`  ${dim("Product:")} ${rawBrief.product}`);
+    console.log(`  ${dim("Audience:")} ${rawBrief.audience}`);
+  }
+
+  // Run discovery from brief's app config
+  let appContext: BriefAppContext | undefined;
+  const appConfig = rawBrief.app;
+
+  if (appConfig && !opts.skipDiscovery) {
+    const resolvedDir = appConfig.directory
+      ? resolve(dirname(briefPath), appConfig.directory)
+      : undefined;
+
+    appContext = await runDiscovery(
+      resolvedDir,
+      appConfig.url,
+      appConfig.start_command,
+      opts.verbose,
+    );
+  }
+
+  const brief: Brief = {
+    ...rawBrief,
+    appContext: appContext ?? rawBrief.appContext,
+  };
+
+  console.log(`  ${dim("Generating draft...")}`);
+  const result = await generateDraft(provider, brief, { model });
+
+  console.log(
+    `  ${green("Generated")} (${result.attempts} attempt(s), ${result.script.acts.length} act(s))`,
+  );
+
+  return result.markdown;
+}
+
+/** Handle interactive mode: prompt for brief fields, then generate. */
+async function handleInteractiveMode(
+  provider: LLMProvider,
+  opts: AuthorCommandOptions,
+  model: string,
+): Promise<string> {
+  const { generateDraft } = await import("@webreel/director");
+
+  const brief = await promptForBrief(!!opts.skipDiscovery, opts.verbose);
+
+  if (opts.verbose) {
+    console.log(`  ${dim("Product:")} ${brief.product}`);
+    console.log(`  ${dim("Audience:")} ${brief.audience}`);
+  }
+
+  console.log(`\n  ${dim("Generating draft...")}`);
+  const result = await generateDraft(provider, brief, { model });
+
+  console.log(
+    `  ${green("Generated")} (${result.attempts} attempt(s), ${result.script.acts.length} act(s))`,
+  );
+
+  return result.markdown;
 }
 
 /** Run the refinement loop: display script, prompt for feedback, apply changes. */
@@ -311,58 +565,4 @@ async function runRefinementLoop(
   }
 
   return currentMarkdown;
-}
-
-/** Handle brief mode: parse YAML brief, generate a draft script. */
-async function handleBriefMode(
-  provider: LLMProvider,
-  opts: AuthorCommandOptions,
-  model: string,
-): Promise<string> {
-  const { parse: parseYaml } = await import("yaml");
-  const { generateDraft } = await import("@webreel/director");
-
-  const briefPath = resolve(opts.brief!);
-  const briefContent = await readFile(briefPath, "utf-8");
-  const brief = parseYaml(briefContent) as Brief;
-
-  if (opts.verbose) {
-    console.log(`  ${dim("Brief:")} ${briefPath}`);
-    console.log(`  ${dim("Product:")} ${brief.product}`);
-    console.log(`  ${dim("Audience:")} ${brief.audience}`);
-  }
-
-  console.log(`  ${dim("Generating draft...")}`);
-  const result = await generateDraft(provider, brief, { model });
-
-  console.log(
-    `  ${green("Generated")} (${result.attempts} attempt(s), ${result.script.acts.length} act(s))`,
-  );
-
-  return result.markdown;
-}
-
-/** Handle interactive mode: prompt for brief fields, then generate. */
-async function handleInteractiveMode(
-  provider: LLMProvider,
-  opts: AuthorCommandOptions,
-  model: string,
-): Promise<string> {
-  const { generateDraft } = await import("@webreel/director");
-
-  const brief = await promptForBrief();
-
-  if (opts.verbose) {
-    console.log(`  ${dim("Product:")} ${brief.product}`);
-    console.log(`  ${dim("Audience:")} ${brief.audience}`);
-  }
-
-  console.log(`\n  ${dim("Generating draft...")}`);
-  const result = await generateDraft(provider, brief, { model });
-
-  console.log(
-    `  ${green("Generated")} (${result.attempts} attempt(s), ${result.script.acts.length} act(s))`,
-  );
-
-  return result.markdown;
 }

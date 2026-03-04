@@ -30,31 +30,34 @@ bugs:
 
   - id: "BUG-002"
     severity: high
-    component: "packages/@webreel/surfaces/src/browser.ts"
-    status: open
-    title: "Render crashes with mutex error when browser action fails"
+    component: "packages/@webreel/surfaces/src/browser.ts, terminal.ts"
+    status: resolved
+    title: "Render crashes with mutex error when surface action fails"
     reported_in: "2025-03-03"
     repro: |
-      Render a script with a browser action that references a non-existent
-      element (e.g., click on selector "textarea" that doesn't exist):
+      Render a script with an action that fails (e.g., wait_for_output timeout,
+      click on non-existent element):
         webreel render script.md -o output.mp4
       Error:
-        Action 3 ("click") failed: Could not find element for click: {"selector":"textarea"}
         libc++abi: terminating due to uncaught exception of type
           std::__1::system_error: mutex lock failed: Invalid argument
         zsh: abort
     root_cause: |
-      Race condition in CDP client cleanup. When a browser action fails,
-      the finally block in SceneOrchestrator.renderScene() immediately calls
-      surface.teardown() → client.close(). If the CDP client has in-flight
-      WebSocket operations (pending Runtime.evaluate, mouse events with
-      pause() timers still queued), close() tries to acquire a mutex that
-      the in-flight operation still holds. The chrome-remote-interface
-      native layer crashes with "mutex lock failed: Invalid argument".
+      Race condition in surface cleanup. When an action fails, the finally
+      block in SceneOrchestrator.renderScene() immediately calls
+      surface.teardown(). For terminal: the PTY onData callback still fires
+      during teardown, accessing this.terminal and this.asciicast with
+      non-null assertions while they're being disposed/nulled. The underlying
+      xterm/node-pty native code crashes with "mutex lock failed".
+      For browser: CDP client.close() races with in-flight WebSocket operations.
     fix: |
-      Proposed: Add a drain delay in BrowserSurface.cleanupResources()
-      before calling client.close() to allow in-flight CDP operations to
-      settle. May also need an AbortController for cancellable actions.
+      Terminal surface:
+      - Store onData disposable, disconnect listener before killing PTY
+      - Guard onData callback with tornDown check + optional chaining
+      - Add 50ms drain delay between listener disconnect and resource disposal
+      Browser surface:
+      - Add 100ms drain delay before client.close() to let in-flight CDP
+        operations settle
 
   - id: "BUG-003"
     severity: medium
@@ -177,3 +180,71 @@ bugs:
       Permanent: add postinstall script to package.json:
         "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
       Will break again on every pnpm install without this.
+
+  - id: "BUG-008"
+    severity: high
+    component: "packages/webreel/src/lib/scene-orchestrator.ts"
+    status: resolved
+    title: "No progress feedback during render — user sees nothing between start and error/success"
+    reported_in: "2025-03-03"
+    description: |
+      When running `webreel render`, the user sees zero output between the
+      initial dry-run summary and the final success/error message. The scene
+      orchestrator executes all actions silently — no per-action logging, no
+      scene-start indicator. If an action takes 30+ seconds (e.g., wait_for_output
+      timeout), the user has no idea what's happening. Scene-complete logging
+      was gated behind --verbose, which most users don't set.
+    fix: |
+      - Added always-on scene start log: "▶ Scene N/M: act / scene [surface]"
+      - Added per-action progress: "(1/6) run "cd /path""
+      - Added failure timing: "✗ failed after 30.1s"
+      - Scene-complete log now always shown (was --verbose only)
+      - Added formatActionLabel() helper for human-readable action summaries
+      - Added formatDuration() helper for elapsed time formatting
+
+  - id: "BUG-009"
+    severity: medium
+    type: enhancement
+    component: "packages/webreel/src/lib/scene-orchestrator.ts"
+    status: open
+    title: "No way to skip or continue past a failed/timed-out action"
+    reported_in: "2025-03-03"
+    description: |
+      When an action fails (e.g., wait_for_output timeout after 30s, click on
+      non-existent element), the entire render aborts. There is no option to
+      skip the failed action and continue rendering remaining actions/scenes.
+      For iterative script development, this forces the user to fix every action
+      sequentially — they can't see the full render with some gaps.
+    suggested_fix: |
+      Add --continue-on-error flag to the render command:
+      - On action failure: log the error, insert a red error frame, continue
+      - At end: report summary of N actions failed out of M total
+      - Exit code 1 if any failures (so CI still catches them)
+      Affects: scene-orchestrator (catch + continue logic), render command
+      (new flag), video-assembler (error frame generation).
+
+  - id: "BUG-010"
+    severity: high
+    component: "packages/webreel/src/commands/author.ts"
+    status: resolved
+    title: "README truncation at 4K chars cuts off setup commands — LLM hallucinated all run/build/URL info"
+    reported_in: "2025-03-03"
+    repro: |
+      Run `webreel author` with a local project that has a large README (e.g.,
+      384 lines / ~27K chars). The Quick Start, Install, and Development Commands
+      sections appear after line 126. tryReadReadme() truncated at 4000 chars
+      (~57 lines), so the LLM only saw the project overview and demo tables.
+      Result: generated script used `npm install`, `npm start`,
+      `http://localhost:8081` instead of the real commands (`pnpm install`,
+      `make dev`, `http://localhost:3000`).
+    root_cause: |
+      tryReadReadme() had a hard 4000-char truncation with no awareness of
+      document structure. For READMEs with long tables/lists before the setup
+      section, the critical "how to run it" content was always cut off.
+    fix: |
+      - Increased README budget from 4K to 12K chars
+      - Added smartTruncateReadme(): scans for setup-related headings (Quick
+        Start, Install, Setup, Run, Prerequisites, Development Commands) and
+        extracts those sections first
+      - Extracted sections prepended as "KEY SECTIONS" so the LLM always sees
+        actual commands, ports, and URLs regardless of README structure

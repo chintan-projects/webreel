@@ -54,6 +54,7 @@
   "dependencies": {
     "@webreel/core": "workspace:*",
     "@webreel/director": "workspace:*",
+    "@webreel/discovery": "workspace:*",
     "@webreel/narrator": "workspace:*",
     "@webreel/surfaces": "workspace:*",
     "commander": "^14.0.3",
