@@ -222,6 +222,12 @@ importers:
       '@webreel/director':
         specifier: workspace:*
         version: link:../@webreel/director
+      '@webreel/narrator':
+        specifier: workspace:*
+        version: link:../@webreel/narrator
+      '@webreel/surfaces':
+        specifier: workspace:*
+        version: link:../@webreel/surfaces
       commander:
         specifier: ^14.0.3
         version: 14.0.3

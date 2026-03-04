@@ -53,6 +53,8 @@
   "dependencies": {
     "@webreel/core": "workspace:*",
     "@webreel/director": "workspace:*",
+    "@webreel/narrator": "workspace:*",
+    "@webreel/surfaces": "workspace:*",
     "commander": "^14.0.3",
     "yaml": "^2.8.2",
     "jiti": "^2.6.1",
