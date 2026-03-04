@@ -10,3 +10,57 @@
 #   title: "Timeout on large inputs"
 #   reported_in: "session-001"
 #   repro: "Send input > 2000 chars"
+
+bugs:
+  - id: "BUG-001"
+    severity: high
+    component: "packages/webreel/src/commands/author.ts"
+    status: resolved
+    title: "author interactive mode hallucinates URLs, commands, and setup steps"
+    reported_in: "2025-03-03"
+    repro: |
+      Run `webreel author` in interactive mode, enter any product name and
+      local project path. The generated Demo Markdown script contains
+      fabricated URLs, localhost ports, npm commands, and UI elements that
+      don't correspond to the actual product.
+    root_cause: |
+      The LLM receives only the brief text (product name, audience, key
+      messages) and the Demo Markdown format spec. The assets path is passed
+      as a plain string — never scanned for README or docs. The LLM has zero
+      real product context and invents everything.
+    fix: |
+      - Added productUrl and productContext fields to Brief interface
+      - Rewrote interactive flow: asks "live URL or local directory?" first
+      - Auto-reads README.md from local dirs, injects into LLM prompt
+      - Added "do NOT hallucinate" instruction in prompt context section
+      - Default output moved to output/ directory (gitignored)
+      - Fixed director build to copy .md prompt templates to dist/
+    fix_commit: "32c2bd9"
+
+  - id: "BUG-002"
+    severity: high
+    component: "packages/@webreel/surfaces/src/browser.ts"
+    status: open
+    title: "Render crashes with mutex error when browser action fails"
+    reported_in: "2025-03-03"
+    repro: |
+      Render a script with a browser action that references a non-existent
+      element (e.g., click on selector "textarea" that doesn't exist):
+        webreel render script.md -o output.mp4
+      Error:
+        Action 3 ("click") failed: Could not find element for click: {"selector":"textarea"}
+        libc++abi: terminating due to uncaught exception of type
+          std::__1::system_error: mutex lock failed: Invalid argument
+        zsh: abort
+    root_cause: |
+      Race condition in CDP client cleanup. When a browser action fails,
+      the finally block in SceneOrchestrator.renderScene() immediately calls
+      surface.teardown() → client.close(). If the CDP client has in-flight
+      WebSocket operations (pending Runtime.evaluate, mouse events with
+      pause() timers still queued), close() tries to acquire a mutex that
+      the in-flight operation still holds. The chrome-remote-interface
+      native layer crashes with "mutex lock failed: Invalid argument".
+    fix: |
+      Proposed: Add a drain delay in BrowserSurface.cleanupResources()
+      before calling client.close() to allow in-flight CDP operations to
+      settle. May also need an AbortController for cancellable actions.
