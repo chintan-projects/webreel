@@ -51,7 +51,6 @@ export interface NutPoint {
  */
 export async function loadNut(surfaceType: string): Promise<NutModule> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const mod = await import("@nut-tree-fork/nut-js");
     return mod as unknown as NutModule;
   } catch {

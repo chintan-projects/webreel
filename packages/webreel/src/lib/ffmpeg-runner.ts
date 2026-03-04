@@ -17,12 +17,20 @@ export function buildFfmpegArgs(
   crf: number,
   preset: string,
   metadataPath?: string,
+  audioPath?: string,
 ): readonly string[] {
   const baseArgs = ["-y", "-framerate", String(fps), "-i", inputPattern];
 
+  // Add audio input if provided (must come before metadata for correct stream indexing)
+  const hasAudio = audioPath !== undefined && format !== "gif";
+  if (hasAudio) {
+    baseArgs.push("-i", audioPath);
+  }
+
   // Add chapter metadata input if provided
   if (metadataPath) {
-    baseArgs.push("-i", metadataPath, "-map_metadata", "1");
+    const metadataStreamIdx = hasAudio ? 2 : 1;
+    baseArgs.push("-i", metadataPath, "-map_metadata", String(metadataStreamIdx));
   }
 
   switch (format) {
@@ -44,6 +52,7 @@ export function buildFfmpegArgs(
         String(crf),
         "-b:v",
         "0",
+        ...(hasAudio ? ["-c:a", "libopus", "-shortest"] : []),
         outputPath,
       ];
     default:
@@ -58,6 +67,7 @@ export function buildFfmpegArgs(
         preset,
         "-crf",
         String(crf),
+        ...(hasAudio ? ["-c:a", "aac", "-shortest"] : []),
         outputPath,
       ];
   }
@@ -75,6 +85,7 @@ export function buildTransitionFfmpegArgs(
   crf: number,
   preset: string,
   metadataPath?: string,
+  audioPath?: string,
 ): readonly string[] {
   const args: string[] = ["-y"];
 
@@ -82,20 +93,34 @@ export function buildTransitionFfmpegArgs(
     args.push("-i", path);
   }
 
+  // Add audio input after video segments
+  const hasAudio = audioPath !== undefined;
+  if (hasAudio) {
+    args.push("-i", audioPath);
+  }
+
   if (metadataPath) {
-    args.push("-i", metadataPath, "-map_metadata", String(segmentPaths.length));
+    const metadataIdx = segmentPaths.length + (hasAudio ? 1 : 0);
+    args.push("-i", metadataPath, "-map_metadata", String(metadataIdx));
   }
 
   args.push("-filter_complex", filterComplex, "-map", "[vout]");
+
+  // Map audio stream if present
+  if (hasAudio) {
+    args.push("-map", `${segmentPaths.length}:a`);
+  }
 
   switch (format) {
     case "webm":
       args.push("-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p");
       args.push("-crf", String(crf), "-b:v", "0");
+      if (hasAudio) args.push("-c:a", "libopus", "-shortest");
       break;
     default:
       args.push("-c:v", "libx264", "-pix_fmt", "yuv420p");
       args.push("-preset", preset, "-crf", String(crf));
+      if (hasAudio) args.push("-c:a", "aac", "-shortest");
       break;
   }
 

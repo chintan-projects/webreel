@@ -35,7 +35,8 @@
   "dependencies": {
     "@webreel/core": "workspace:*",
     "@webreel/director": "workspace:*",
-    "kokoro-js": "^1.2.1"
+    "kokoro-js": "^1.2.1",
+    "openai": "^4.87.3"
   },
   "devDependencies": {
     "@types/node": "25.3.0",

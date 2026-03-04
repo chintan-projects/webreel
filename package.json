@@ -7,6 +7,7 @@
     "type-check": "turbo run type-check",
     "dev": "turbo run dev",
     "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

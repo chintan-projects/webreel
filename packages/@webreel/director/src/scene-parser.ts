@@ -13,13 +13,10 @@ import type {
   CaptureSpec,
 } from "./types.js";
 import type { LineInfo } from "./parser.js";
-import { ParseError } from "./errors.js";
-
 const BLOCKQUOTE_RE = /^>\s*(.*)/;
 const BULLET_RE = /^-\s+(.*)/;
 const CAPTURE_INDENT_RE = /^\s{2,}(\w+):\s*regex\("(.+?)"\)/;
 const DYNAMIC_REF_RE = /\[read_output:(\w+)\]/g;
-const INLINE_PAUSE_RE = /\[pause\s+([\d.]+)s?\]/g;
 
 /**
  * Parse the content lines of a single scene into a Scene IR node.
@@ -173,12 +170,11 @@ function parseQuotedNarration(
   block: NarrationBlock;
   nextIndex: number;
 } {
-  let text = "";
   let i = startIdx;
   const firstLine = lines[i].text.trim();
 
   // Remove opening quote
-  text = firstLine.startsWith('"') ? firstLine.slice(1) : firstLine;
+  let text = firstLine.startsWith('"') ? firstLine.slice(1) : firstLine;
 
   // Check if closing quote is on the same line
   if (text.endsWith('"')) {

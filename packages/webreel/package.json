@@ -48,7 +48,8 @@
     "build": "rm -rf dist && tsc",
     "type-check": "tsc --noEmit",
     "dev": "tsc --watch",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config src/__tests__/e2e/vitest.e2e.config.ts"
   },
   "dependencies": {
     "@webreel/core": "workspace:*",
@@ -56,9 +57,10 @@
     "@webreel/narrator": "workspace:*",
     "@webreel/surfaces": "workspace:*",
     "commander": "^14.0.3",
-    "yaml": "^2.8.2",
+    "dotenv": "^17.3.1",
     "jiti": "^2.6.1",
-    "jsonc-parser": "^3.3.1"
+    "jsonc-parser": "^3.3.1",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@types/node": "25.3.0",

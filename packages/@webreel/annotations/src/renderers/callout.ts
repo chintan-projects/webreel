@@ -119,9 +119,6 @@ function computeBoxPosition(
   frameWidth: number,
   frameHeight: number,
 ): BoxPosition {
-  const targetCenterX = target.x + target.width / 2;
-  const targetCenterY = target.y + target.height / 2;
-
   let x: number;
   let y: number;
 

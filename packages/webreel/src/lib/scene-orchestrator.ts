@@ -22,6 +22,7 @@ import {
 } from "@webreel/surfaces";
 import { parse, type DemoScript, type Scene, type Act } from "@webreel/director";
 import { ensureFfmpeg, WebReelError } from "@webreel/core";
+import type { NarrationTimeline, NarrationEngine } from "@webreel/narrator";
 
 import { SceneCache, type SceneCacheConfig } from "./scene-cache.js";
 import { hashScene, hashScript, detectChangedScenes } from "./scene-hasher.js";
@@ -30,6 +31,13 @@ import {
   assembleVideo as assembleVideoWithFeatures,
   type AssemblerSceneResult,
 } from "./video-assembler.js";
+import { parseFormats } from "./format-utils.js";
+import {
+  buildNarratorConfig,
+  createNarrationEngine,
+  generateSceneNarration,
+} from "./narration-helper.js";
+import { mixSceneAudio } from "./audio-mixer.js";
 
 /** Options controlling what and how to render. */
 interface RenderOptions {
@@ -46,7 +54,7 @@ interface RenderOptions {
   readonly chapters?: boolean;
 }
 
-/** Result of rendering a single scene (frames + timing). */
+/** Result of rendering a single scene (frames + timing + optional narration). */
 interface SceneResult {
   readonly sceneName: string;
   readonly actName: string;
@@ -55,6 +63,8 @@ interface SceneResult {
   readonly fromCache: boolean;
   /** Scene IR reference for transition and narration access. */
   readonly scene: Scene;
+  /** Narration timeline with WAV audio segments (if TTS was available). */
+  readonly narrationTimeline?: NarrationTimeline;
 }
 
 /** Configuration for the render pipeline. */
@@ -88,10 +98,13 @@ class SceneOrchestrator {
   /**
    * Render a Demo Markdown script to video.
    *
+   * Supports multi-format output: when `options.format` contains comma-separated
+   * formats (e.g., "mp4,webm,gif"), produces one output file per format.
+   *
    * @param options - Render options (script path, output path, filters, flags).
-   * @returns The absolute path to the rendered output file, or empty string for dry-run.
+   * @returns Array of output file paths, or empty array for dry-run.
    */
-  async render(options: RenderOptions): Promise<string> {
+  async render(options: RenderOptions): Promise<readonly string[]> {
     const scriptContent = await readFile(options.scriptPath, "utf-8");
     const script = parse(scriptContent);
     const scriptHash = hashScript(script);
@@ -99,7 +112,7 @@ class SceneOrchestrator {
 
     if (options.dryRun) {
       await this.printPlan(script, scriptHash, cacheEnabled);
-      return "";
+      return [];
     }
 
     const ffmpegPath = await ensureFfmpeg();
@@ -107,27 +120,36 @@ class SceneOrchestrator {
       ? await this.sceneCache.listHashes(scriptHash)
       : new Map<string, string>();
 
+    // Create narration engine (null if TTS unavailable — graceful degradation)
+    const narratorConfig = buildNarratorConfig(script.meta);
+    const narrationEngine = createNarrationEngine(narratorConfig);
+
     const sceneResults: SceneResult[] = [];
-    for (const act of script.acts) {
-      if (options.act && act.name !== options.act) continue;
+    try {
+      for (const act of script.acts) {
+        if (options.act && act.name !== options.act) continue;
 
-      for (const scene of act.scenes) {
-        if (options.scene && scene.name !== options.scene) continue;
+        for (const scene of act.scenes) {
+          if (options.scene && scene.name !== options.scene) continue;
 
-        const result = await this.renderOrLoadScene(
-          scene,
-          act.name,
-          script,
-          options,
-          scriptHash,
-          cachedHashes,
-          cacheEnabled,
-        );
-        sceneResults.push(result);
-        if (options.verbose) {
-          this.logSceneComplete(result);
+          const result = await this.renderOrLoadScene(
+            scene,
+            act.name,
+            script,
+            options,
+            scriptHash,
+            cachedHashes,
+            cacheEnabled,
+            narrationEngine,
+          );
+          sceneResults.push(result);
+          if (options.verbose) {
+            this.logSceneComplete(result);
+          }
         }
       }
+    } finally {
+      await narrationEngine?.dispose();
     }
 
     if (sceneResults.length === 0) {
@@ -150,6 +172,7 @@ class SceneOrchestrator {
     scriptHash: string,
     cachedHashes: Map<string, string>,
     cacheEnabled: boolean,
+    narrationEngine: NarrationEngine | null,
   ): Promise<SceneResult> {
     const sceneHash = hashScene(scene);
 
@@ -160,6 +183,16 @@ class SceneOrchestrator {
         const cachedScene = await this.sceneCache.read(scriptHash, scene.name);
         if (cachedScene) {
           const videoData = await readFile(cachedScene.videoPath);
+          // Reconstruct narration timeline from cache if available
+          let narrationTimeline: NarrationTimeline | undefined;
+          if (cachedScene.timelinePath) {
+            try {
+              const raw = await readFile(cachedScene.timelinePath, "utf-8");
+              narrationTimeline = JSON.parse(raw) as NarrationTimeline;
+            } catch {
+              // Timeline cache corrupt — continue without it
+            }
+          }
           return {
             sceneName: scene.name,
             actName,
@@ -167,13 +200,20 @@ class SceneOrchestrator {
             durationMs: 0,
             fromCache: true,
             scene,
+            narrationTimeline,
           };
         }
       }
     }
 
     // Cache miss — render the scene
-    const result = await this.renderScene(scene, actName, script, options);
+    const result = await this.renderScene(
+      scene,
+      actName,
+      script,
+      options,
+      narrationEngine,
+    );
 
     // Write to cache
     if (cacheEnabled && result.frames.length > 0) {
@@ -201,9 +241,21 @@ class SceneOrchestrator {
         );
         await runFfmpeg(sceneFfmpegPath, args, false);
         const videoBuffer = await readFile(sceneVideoPath);
+
+        // Build cache data with optional narration audio/timeline
+        let audioBuffer: Buffer | undefined;
+        let timelineJson: string | undefined;
+        if (result.narrationTimeline) {
+          const sceneDurationMs = (result.frames.length / fps) * 1000;
+          audioBuffer = mixSceneAudio(result.narrationTimeline, sceneDurationMs);
+          timelineJson = JSON.stringify(result.narrationTimeline);
+        }
+
         await this.sceneCache.write(scriptHash, scene.name, {
           video: videoBuffer,
           hash: sceneHash,
+          audio: audioBuffer,
+          timeline: timelineJson,
         });
       } finally {
         await rm(tempDir, { recursive: true, force: true });
@@ -221,8 +273,10 @@ class SceneOrchestrator {
     actName: string,
     script: DemoScript,
     options: RenderOptions,
+    narrationEngine: NarrationEngine | null,
   ): Promise<SceneResult> {
     const viewport = script.meta.viewport ?? { width: 1280, height: 720 };
+    const fps = this.renderConfig.fps ?? script.meta.output?.fps ?? DEFAULT_FPS;
     const surfaceConfig: SurfaceConfig = {
       type: scene.surface.type as SurfaceConfig["type"],
       viewport,
@@ -271,6 +325,23 @@ class SceneOrchestrator {
         frames.push(await surface.captureFrame());
       }
 
+      // Generate narration timeline (null if TTS unavailable or no narration)
+      const narrationTimeline = await generateSceneNarration(narrationEngine, scene);
+
+      // Extend frames if narration audio is longer than captured frames
+      if (narrationTimeline) {
+        const frameDurationMs = (frames.length / fps) * 1000;
+        if (narrationTimeline.totalDurationMs > frameDurationMs) {
+          const extraFrames = Math.ceil(
+            ((narrationTimeline.totalDurationMs - frameDurationMs) / 1000) * fps,
+          );
+          const lastFrame = frames[frames.length - 1]!;
+          for (let i = 0; i < extraFrames; i++) {
+            frames.push(lastFrame);
+          }
+        }
+      }
+
       const finalFrame = await surface.captureFrame();
       for (let i = 0; i < HOLD_FRAMES; i++) {
         frames.push(finalFrame);
@@ -283,6 +354,7 @@ class SceneOrchestrator {
         durationMs: Date.now() - startTime,
         fromCache: false,
         scene,
+        narrationTimeline: narrationTimeline ?? undefined,
       };
     } catch (err: unknown) {
       if (err instanceof WebReelError || err instanceof SurfaceError) throw err;
@@ -295,40 +367,66 @@ class SceneOrchestrator {
     }
   }
 
-  /** Assemble captured frames into a video file via ffmpeg. */
+  /**
+   * Assemble captured frames into video files via ffmpeg.
+   *
+   * When multiple formats are requested (e.g., "mp4,webm,gif"), produces
+   * one output file per format. Subtitle files are generated only once
+   * (alongside the first format).
+   */
   private async assembleVideo(
     results: readonly SceneResult[],
     script: DemoScript,
     options: RenderOptions,
     ffmpegPath: string,
-  ): Promise<string> {
+  ): Promise<readonly string[]> {
     const fps = this.renderConfig.fps ?? script.meta.output?.fps ?? DEFAULT_FPS;
     const crf = this.renderConfig.crf ?? DEFAULT_CRF;
     const preset = this.renderConfig.preset ?? DEFAULT_PRESET;
 
-    // Delegate to video-assembler which handles transitions, chapters, subtitles
+    const formats = parseFormats(options.format, script.meta.output?.format);
+
     const assemblerResults: AssemblerSceneResult[] = results.map((r) => ({
       sceneName: r.sceneName,
       actName: r.actName,
       frames: r.frames,
       durationMs: r.durationMs,
       scene: r.scene,
+      narrationTimeline: r.narrationTimeline,
     }));
 
-    return assembleVideoWithFeatures(
-      assemblerResults,
-      script,
-      {
-        scriptPath: options.scriptPath,
-        outputPath: options.outputPath,
-        format: options.format,
-        verbose: options.verbose,
-        subtitles: options.subtitles,
-        chapters: options.chapters,
-      },
-      { fps, crf, preset },
-      ffmpegPath,
-    );
+    const outputPaths: string[] = [];
+    for (let i = 0; i < formats.length; i++) {
+      const format = formats[i]!;
+      const outputPath = await assembleVideoWithFeatures(
+        assemblerResults,
+        script,
+        {
+          scriptPath: options.scriptPath,
+          outputPath: this.resolveOutputPath(options.outputPath, format),
+          format,
+          verbose: options.verbose,
+          subtitles: options.subtitles && i === 0,
+          chapters: options.chapters,
+        },
+        { fps, crf, preset },
+        ffmpegPath,
+      );
+      outputPaths.push(outputPath);
+    }
+
+    return outputPaths;
+  }
+
+  /**
+   * Resolve the output path for a specific format.
+   *
+   * If the user provided a path, replaces the extension with the target format.
+   * If no path was provided, returns empty string to let the assembler generate a default.
+   */
+  private resolveOutputPath(outputPath: string, format: string): string {
+    if (!outputPath) return "";
+    return outputPath.replace(/\.[^.]+$/, `.${format}`);
   }
 
   /** Print a human-readable render plan (dry-run mode) with cache status. */

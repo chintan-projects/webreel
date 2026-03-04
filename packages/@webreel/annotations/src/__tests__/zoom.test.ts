@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import sharp from "sharp";
 import { ZoomRenderer } from "../renderers/zoom.js";
 import type { ZoomConfig } from "../types.js";
 import {

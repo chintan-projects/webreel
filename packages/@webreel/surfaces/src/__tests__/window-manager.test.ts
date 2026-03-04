@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as childProcess from "node:child_process";
+
 import { promisify } from "node:util";
 
 // Mock child_process.execFile before importing the module under test

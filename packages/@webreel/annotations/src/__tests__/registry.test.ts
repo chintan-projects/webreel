@@ -6,7 +6,11 @@ import type { AnnotationRenderer, AnnotationConfig } from "../types.js";
 function createMockRenderer(type: string): AnnotationRenderer {
   return {
     type: type as AnnotationRenderer["type"],
-    async render(frame: Buffer, _config: AnnotationConfig, _ts: number): Promise<Buffer> {
+    async render(
+      frame: Buffer,
+      _config: AnnotationConfig,
+      _timestampMs: number,
+    ): Promise<Buffer> {
       return frame;
     },
   };

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import "dotenv/config";
+
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +12,8 @@ import { validateCommand } from "./commands/validate.js";
 import { previewCommand } from "./commands/preview.js";
 import { compositeCommand } from "./commands/composite.js";
 import { createAuthorCommand } from "./commands/author.js";
+import { createRenderCommand } from "./commands/render.js";
+import { createPlanCommand } from "./commands/plan.js";
 
 let version = "0.0.0";
 try {
@@ -36,6 +40,8 @@ program.addCommand(validateCommand);
 program.addCommand(previewCommand);
 program.addCommand(compositeCommand);
 program.addCommand(createAuthorCommand());
+program.addCommand(createRenderCommand());
+program.addCommand(createPlanCommand());
 
 program.parseAsync().catch((err: Error) => {
   console.error(err.message);

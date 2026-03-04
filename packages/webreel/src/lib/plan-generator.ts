@@ -9,7 +9,6 @@
 import type {
   DemoScript,
   Scene,
-  Act,
   ActionDirective,
   NarrationBlock,
 } from "@webreel/director";

@@ -100,9 +100,6 @@ export function autoSelectEdge(
   frameWidth: number,
   frameHeight: number,
 ): "left" | "right" | "top" | "bottom" {
-  const centerX = target.x + target.width / 2;
-  const centerY = target.y + target.height / 2;
-
   const spaceLeft = target.x;
   const spaceRight = frameWidth - (target.x + target.width);
   const spaceTop = target.y;

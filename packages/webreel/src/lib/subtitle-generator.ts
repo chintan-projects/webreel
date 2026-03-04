@@ -6,7 +6,7 @@
  * WebVTT uses period-separated milliseconds (00:00:01.000).
  */
 
-import type { NarrationTimeline, NarrationSegment } from "@webreel/narrator";
+import type { NarrationTimeline } from "@webreel/narrator";
 
 /** A single subtitle entry with timing and text. */
 export interface SubtitleSegment {

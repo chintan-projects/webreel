@@ -1,6 +1,9 @@
 import * as pty from "node-pty";
-import { Terminal } from "@xterm/headless";
+import xterm from "@xterm/headless";
 import { SerializeAddon } from "@xterm/addon-serialize";
+
+const { Terminal } = xterm;
+type Terminal = InstanceType<typeof Terminal>;
 
 import type {
   Surface,
@@ -295,7 +298,6 @@ export class TerminalSurface implements Surface {
     const start = Date.now();
     let lastLength = this.outputBuffer.length;
 
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       await delay(settleMs);
       if (this.outputBuffer.length === lastLength) return;

@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import { watch, type FSWatcher } from "node:fs";
 import { resolve } from "node:path";
 import {
   loadWebreelConfig,
@@ -7,6 +6,7 @@ import {
   getConfigDir,
   filterVideosByName,
 } from "../lib/config.js";
+import { watchAndRerun } from "../lib/file-watcher.js";
 import { runVideo } from "../lib/runner.js";
 import type { WebreelConfig } from "../lib/types.js";
 
@@ -106,63 +106,28 @@ export const recordCommand = new Command("record")
 
       if (opts.watch) {
         console.log("\nWatching for changes...");
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        let recordingInProgress: Promise<void> | null = null;
-        const watchers: FSWatcher[] = [];
+        const watchPaths = [
+          configPath,
+          ...collectIncludePaths(webreelConfig, configPath),
+        ];
 
-        const closeAllWatchers = () => {
-          for (const w of watchers) w.close();
-          watchers.length = 0;
-        };
-
-        const setupWatchers = (cfg: WebreelConfig) => {
-          closeAllWatchers();
-          watchers.push(watch(configPath, onFileChange));
-          for (const p of collectIncludePaths(cfg, configPath)) {
-            watchers.push(watch(p, onFileChange));
+        const handle = watchAndRerun(watchPaths, async () => {
+          console.log("\nRe-recording...");
+          const latestConfig = await loadWebreelConfig(configPath);
+          const updatedVideos = filterVideosByName(latestConfig.videos, videoNames);
+          for (const video of updatedVideos) {
+            await runVideo(video, {
+              record: true,
+              verbose,
+              configDir,
+              frames: opts.frames,
+            });
           }
-        };
-
-        const onFileChange = () => {
-          if (timer) clearTimeout(timer);
-
-          timer = setTimeout(async () => {
-            timer = null;
-            console.log("\nRe-recording...");
-            let latestConfig: WebreelConfig | null = null;
-            const run = (async () => {
-              try {
-                latestConfig = await loadWebreelConfig(configPath);
-                const updatedVideos = filterVideosByName(latestConfig.videos, videoNames);
-                for (const video of updatedVideos) {
-                  await runVideo(video, {
-                    record: true,
-                    verbose,
-                    configDir,
-                    frames: opts.frames,
-                  });
-                }
-              } catch (err) {
-                console.error(`Error re-recording:`, err);
-              } finally {
-                recordingInProgress = null;
-                setupWatchers(latestConfig ?? webreelConfig);
-              }
-            })();
-            recordingInProgress = run;
-            await run;
-          }, 300);
-        };
-
-        setupWatchers(webreelConfig);
-
-        process.on("SIGINT", async () => {
-          closeAllWatchers();
-          if (recordingInProgress) {
-            console.log("\nWaiting for current recording to finish...");
-            await recordingInProgress;
-          }
-          process.exit(0);
+          // Update watched paths in case config changed includes
+          handle.updatePaths([
+            configPath,
+            ...collectIncludePaths(latestConfig, configPath),
+          ]);
         });
       }
     },

@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import sharp from "sharp";
 import { HighlightRenderer } from "../renderers/highlight.js";
 import type { HighlightConfig } from "../types.js";
 import {
